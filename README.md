@@ -142,12 +142,14 @@ expected references. Comma level means the retrieved unit matches an expected re
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | Lexical (Italian full-text) | 0.192 | 0.546 | 0.751 | 0.355 | 0.610 | 0.788 | 0.387 |
 | Semantic (e5-base) | 0.534 | 0.799 | 0.899 | 0.684 | 0.884 | 0.931 | 0.783 |
-| **Hybrid (RRF, default)** | 0.660 | 0.836 | 0.886 | 0.786 | 0.870 | 0.918 | 0.827 |
+| **Hybrid (RRF, default)** | 0.660 | 0.836 | 0.886 | 0.786 | 0.870 | 0.918 | 0.826 |
 
-Run `20261011T165405Z_retrieval`, on the exactly dated corpus: 73 questions, all drafts,
-k = 1, 3, 5, 10. Dating the changes exactly moved no question across a version, so the numbers
-are the same as on the earlier corpus. The full report,
-with results by kind and by topic, is in [eval/results/latest.md](eval/results/latest.md). With
+Run `20261011T175038Z_retrieval`, on the exactly dated corpus with the repaired comma numbering
+and point-in-time headings: 73 questions, all drafts, k = 1, 3, 5, 10. The repair added commi
+41/9-41/15 and 62/8-62/18 before 2024-12-28; this reordered some candidates of the two questions
+dated 2024-06-01 and moved a single figure, the hybrid article MRR (0.827 before). The full
+report, with results by kind and by topic, is in
+[eval/results/latest_retrieval.md](eval/results/latest_retrieval.md). With
 hybrid search, 71% of questions get an expected comma in first place (hit@1) and 88% within the
 top 5 (hit@5). Semantic search alone has the best recall@10. The weakest group is the
 multi-reference questions (hybrid recall@5 0.556 over 9 questions). Only 4 questions cite an

@@ -1,6 +1,6 @@
 {
-  "run_id": "20261011T165405Z_retrieval",
-  "created_at": "2026-10-11T16:54:05Z",
+  "run_id": "20261011T175038Z_retrieval",
+  "created_at": "2026-10-11T17:50:38Z",
   "dataset": {
     "path": "eval/dataset.yaml",
     "size": 81,
@@ -47,7 +47,7 @@
       "article_hit@3": 0.8767,
       "article_hit@5": 0.8904,
       "article_hit@10": 0.9178,
-      "article_mrr": 0.8265
+      "article_mrr": 0.8263
     },
     "by_kind": {
       "answerable": {
@@ -90,7 +90,7 @@
         "article_hit@3": 0.8333,
         "article_hit@5": 0.8333,
         "article_hit@10": 0.9167,
-        "article_mrr": 0.8438
+        "article_mrr": 0.8426
       },
       "multi": {
         "n": 9,
@@ -239,7 +239,7 @@
         "article_hit@3": 0.8,
         "article_hit@5": 0.8667,
         "article_hit@10": 0.9333,
-        "article_mrr": 0.7917
+        "article_mrr": 0.7907
       },
       "garanzie": {
         "n": 4,
@@ -1515,7 +1515,7 @@
         "article_hit@3": 0.8767,
         "article_hit@5": 0.8904,
         "article_hit@10": 0.9178,
-        "article_mrr": 0.8265
+        "article_mrr": 0.8263
       },
       "by_kind": {
         "answerable": {
@@ -1558,7 +1558,7 @@
           "article_hit@3": 0.8333,
           "article_hit@5": 0.8333,
           "article_hit@10": 0.9167,
-          "article_mrr": 0.8438
+          "article_mrr": 0.8426
         },
         "multi": {
           "n": 9,
@@ -1707,7 +1707,7 @@
           "article_hit@3": 0.8,
           "article_hit@5": 0.8667,
           "article_hit@10": 0.9333,
-          "article_mrr": 0.7917
+          "article_mrr": 0.7907
         },
         "garanzie": {
           "n": 4,
@@ -7231,7 +7231,7 @@
             "all:II.16/p13",
             "104/2",
             "175/3",
-            "all:II.6/p151"
+            "all:II.6/p128"
           ],
           "recall@1": 1.0,
           "recall@3": 1.0,
@@ -7514,10 +7514,10 @@
             "158/2",
             "209/1",
             "all:II.14/1/2",
-            "62/7",
             "all:I.7/40/2",
             "all:II.14/22/1",
-            "all:I.2/8/1"
+            "all:I.2/8/1",
+            "all:I.1/2/1"
           ],
           "recall@1": 0.0,
           "recall@3": 0.0,
@@ -7575,13 +7575,13 @@
             "209/1",
             "120/1",
             "103/1",
+            "all:II.12/28/1",
             "100/4",
             "all:I.7/31/1",
             "76/6",
             "all:II.12/tabelle",
             "60/5",
-            "all:II.14/12/1",
-            "all:I.1/3/1"
+            "all:II.14/12/1"
           ],
           "recall@1": 0.0,
           "recall@3": 0.0,
@@ -7600,7 +7600,7 @@
           "article_hit@3": 0.0,
           "article_hit@5": 0.0,
           "article_hit@10": 1.0,
-          "article_mrr": 0.125
+          "article_mrr": 0.1111111111111111
         }
       }
     },
@@ -7720,7 +7720,6 @@
       "by_mode": {
         "lexical": {
           "retrieved": [
-            "62/7",
             "all:I.1/3/1",
             "209/1",
             "all:I.1/1/1",
@@ -7729,7 +7728,8 @@
             "all:II.4/tabelle",
             "all:II.14/1/2",
             "140/11",
-            "all:I.7/5/1"
+            "all:I.7/5/1",
+            "all:II.14/22/1"
           ],
           "recall@1": 0.0,
           "recall@3": 0.0,
@@ -7756,12 +7756,12 @@
             "all:I.2/2/1",
             "15/2",
             "222/9",
+            "62/14",
             "all:I.2/9/3",
             "all:II.4/8/3",
             "all:I.2/9/8",
             "all:I.2/3/1",
-            "140/11",
-            "all:I.2/2/3"
+            "140/11"
           ],
           "recall@1": 0.0,
           "recall@3": 1.0,
@@ -7790,10 +7790,10 @@
             "all:I.2/2/3",
             "all:I.2/9/1",
             "all:I.2/7/1",
-            "62/7",
-            "all:II.4/3/6",
+            "99/1",
+            "15/1",
             "all:I.1/3/1",
-            "all:I.2/2/1"
+            "all:II.4/3/6"
           ],
           "recall@1": 1.0,
           "recall@3": 1.0,
