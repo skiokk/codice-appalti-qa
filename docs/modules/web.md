@@ -11,10 +11,11 @@ Italia, plus a JSON API. `create_app()` works with no arguments (the Docker imag
 | `api.py` | `/api/v1` routes and `/healthz` |
 | `asking.py` | question flow shared by the form and the API: validation, rate limits, logging |
 | `backend.py` | `DatabaseBackend`: corpus lookups via `retrieval` and `qa_log` writes |
-| `clients.py` | client identification (salted hash, trusted proxies) |
+| `clients.py` | client identification (salted hash of the address bucket, trusted proxies) |
+| `querycache.py` | `CachedQueryEmbedder`: LRU cache of query embeddings for `/api/v1/search` |
 | `ratelimit.py` | in-process sliding windows |
 | `views.py`, `formatting.py`, `results.py` | view models, Italian formatting, evaluation page data |
-| `templates/`, `static/` | Jinja2 templates, CSS, htmx configuration |
+| `templates/`, `static/` | Jinja2 templates, CSS, htmx configuration and error handling |
 
 ## Routes
 
@@ -26,23 +27,33 @@ Italia, plus a JSON API. `create_app()` works with no arguments (the Docker imag
 | `GET /valutazione` | latest evaluation run (`eval/results/latest.json`) |
 | `GET /informazioni` | "Come funziona": sources, method, limits, privacy, accessibility |
 | `POST /api/v1/answer` (alias `POST /api/ask`) | `{"question", "date"?}` -> `Answer` |
-| `GET /api/v1/search?q=&date=&k=&mode=` | `list[Hit]` |
+| `GET /api/v1/search?q=&date=&k=&mode=` | `list[Hit]`, `k` at most 20 |
 | `GET /api/v1/units/{key}?date=` | `list[Hit]` |
 | `GET /healthz` | `{"status": "ok", "db": bool}` |
 | `GET /api/docs` | OpenAPI documentation |
 
 ## Behaviour
 
-- Rate limits on answering endpoints only: `RATE_LIMIT_PER_IP_PER_HOUR` per client and
-  `RATE_LIMIT_GLOBAL_PER_DAY` overall (0 disables); 429 with `Retry-After` and an Italian message.
-  Invalid requests do not use up the quota. Limits are in process (reset on restart, per worker).
-- Clients are identified by a salted SHA-256 of the address (`CLIENT_HASH_SALT`).
-  `X-Forwarded-For` is read only from peers listed in `FORWARDED_ALLOW_IPS`. Raw IPs are never
-  stored.
+- Rate limits on the answering endpoints: `RATE_LIMIT_PER_IP_PER_HOUR` per client and
+  `RATE_LIMIT_GLOBAL_PER_DAY` overall (0 disables). `GET /api/v1/search` has a separate
+  per-client budget, `RATE_LIMIT_SEARCH_PER_IP_PER_HOUR` (default 120), and repeated queries reuse
+  their cached embedding. All limits answer 429 with `Retry-After` and an Italian message; invalid
+  requests do not use up the quota. Limits are in process (reset on restart, per worker).
+- Clients are identified by a salted SHA-256 of the address (`CLIENT_HASH_SALT`); IPv6 addresses
+  are reduced to their /64 network first, so one host cannot rotate addresses to evade the limits.
+  `X-Forwarded-For` is read only from peers listed in `FORWARDED_ALLOW_IPS`; with `*` only the
+  rightmost hop (the one the immediate proxy appended) is used, unlike uvicorn's leftmost. Raw
+  IPs are never stored.
 - Every answer, and every failed attempt, is written to `qa_log` in a background task; a logging
   failure never breaks the response.
 - Validation errors return 422 with Italian messages; `LLMError` or a database error return 503
-  with a generic message (details only in the log).
+  with a generic message (details only in the log). An unexpected error returns 500; for htmx
+  requests it is a partial with `role="alert"` swapped into the page. Other failed htmx requests
+  (a proxy's 502 or 504, a network error, a timeout) are reported by `app.js`, which writes an
+  Italian alert into the target and resets `aria-busy`, the loading indicator and the submit
+  button.
+- The version history on `/norma/{key}` names the act that introduced each version; versions
+  that only changed punctuation or the split into commi are labelled "Modifica redazionale".
 
 ## Security and accessibility
 

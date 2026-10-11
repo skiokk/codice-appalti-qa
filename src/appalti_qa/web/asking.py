@@ -79,9 +79,14 @@ def configured_model(settings: Settings) -> tuple[str, str]:
     return provider, models.get(provider, "fake")
 
 
+def wait_text(retry_after_s: int) -> str:
+    """Italian approximation of a wait in whole minutes: "1 minuto", "12 minuti"."""
+    minutes = max(1, round(retry_after_s / 60))
+    return "1 minuto" if minutes == 1 else f"{minutes} minuti"
+
+
 def _limit_message(limit: LimitExceeded) -> str:
-    minutes = max(1, round(limit.retry_after_s / 60))
-    wait = "1 minuto" if minutes == 1 else f"{minutes} minuti"
+    wait = wait_text(limit.retry_after_s)
     if limit.scope == "client":
         return (
             f"Hai raggiunto il limite di {limit.limit} domande all'ora per questo servizio "

@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 
 from appalti_qa import retrieval
 from appalti_qa.models import Answer
+from appalti_qa.retrieval import FakeEmbedder
 from appalti_qa.web import create_app
 from appalti_qa.web.backend import RANGE_RETRY_S, DatabaseBackend, QALogEntry
 
@@ -64,12 +65,13 @@ def test_corpus_queries_use_the_given_connection(monkeypatch) -> None:
         "history",
         lambda ref, *, conn: seen.append(("history", ref, conn)) or [],
     )
-    monkeypatch.setattr(
-        retrieval,
-        "search",
-        lambda q, d, k, mode, *, conn: seen.append(("search", q, d, k, mode, conn)) or [],
-    )
-    backend = DatabaseBackend(lambda: nullcontext("conn"))
+
+    def fake_search(q, d, k, mode, *, conn, embedder) -> list:
+        seen.append(("search", q, d, k, mode, conn))
+        return []
+
+    monkeypatch.setattr(retrieval, "search", fake_search)
+    backend = DatabaseBackend(lambda: nullcontext("conn"), embedder=FakeEmbedder(8))
     day = date(2025, 1, 1)
     backend.lookup("50/1", day)
     backend.history("50")
@@ -79,6 +81,33 @@ def test_corpus_queries_use_the_given_connection(monkeypatch) -> None:
         ("history", "50", "conn"),
         ("search", "soglie", day, 5, "lexical", "conn"),
     ]
+
+
+def test_search_embeds_queries_through_the_cache(monkeypatch) -> None:
+    calls: list[str] = []
+
+    def fake_search(q, d, k, mode, *, conn, embedder):
+        calls.append(q)
+        embedder.embed_queries([q])
+        return []
+
+    monkeypatch.setattr(retrieval, "search", fake_search)
+    backend = DatabaseBackend(lambda: nullcontext("conn"), embedder=FakeEmbedder(8))
+    day = date(2025, 1, 1)
+    for query in ("soglie", "soglie", "subappalto", "soglie"):
+        backend.search(query, day, 5, "hybrid")
+    cache = backend.query_embedder()
+    assert calls == ["soglie", "soglie", "subappalto", "soglie"]
+    assert (cache.hits, cache.misses) == (2, 2)
+    assert cache.model_name == "fake"
+
+
+def test_default_query_embedder_wraps_the_configured_one(monkeypatch) -> None:
+    configured = FakeEmbedder(8)
+    monkeypatch.setattr(retrieval, "get_embedder", lambda: configured)
+    backend = DatabaseBackend(lambda: nullcontext("conn"))
+    assert backend.query_embedder() is backend.query_embedder()
+    assert backend.query_embedder().dim == 8
 
 
 @pytest.mark.db
@@ -141,3 +170,17 @@ def test_norma_page_and_units_api_on_seeded_corpus(
     assert hit["modified_by"][0]["label"] == "D.Lgs. 31 dicembre 2024, n. 209"
     page = client.get("/").text
     assert 'min="2023-04-01"' in page
+
+
+@pytest.mark.db
+def test_search_on_seeded_corpus_reuses_query_vectors(seeded_conn: psycopg.Connection) -> None:
+    embedder = FakeEmbedder(768)
+    retrieval.embed_missing(seeded_conn, embedder)
+    backend = DatabaseBackend(lambda: nullcontext(seeded_conn), embedder=embedder)
+    day = date(2025, 1, 1)
+    first = backend.search("affidamento diretto", day, 3, "hybrid")
+    again = backend.search("affidamento diretto", day, 3, "semantic")
+    assert first and again
+    assert all(hit.valid_from <= day for hit in first)
+    cache = backend.query_embedder()
+    assert (cache.hits, cache.misses) == (1, 1)

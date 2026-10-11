@@ -2,7 +2,7 @@ import httpx
 import pytest
 from starlette.requests import Request
 
-from appalti_qa.web.clients import ClientHasher, TrustedProxies, client_address
+from appalti_qa.web.clients import ClientHasher, TrustedProxies, client_address, client_bucket
 
 
 def request(peer: str, forwarded: str | None = None) -> Request:
@@ -37,6 +37,52 @@ def test_forwarded_header_read_from_trusted_proxy() -> None:
     assert client_address(req, trusted) == "198.51.100.1"
     assert client_address(request("10.0.0.2"), trusted) == "10.0.0.2"
     assert client_address(request("10.0.0.2", "10.0.0.9"), trusted) == "10.0.0.9"
+
+
+def test_trust_any_uses_only_the_hop_added_by_the_proxy() -> None:
+    trusted = TrustedProxies.parse("*")
+    assert trusted.trusts_any and not TrustedProxies.parse("10.0.0.0/8").trusts_any
+    # the client wrote "1.2.3.4"; the proxy appended the address it saw
+    req = request("172.18.0.2", "1.2.3.4, 198.51.100.1")
+    assert client_address(req, trusted) == "198.51.100.1"
+    assert client_address(request("172.18.0.2", " 198.51.100.1 "), trusted) == "198.51.100.1"
+    assert client_address(request("172.18.0.2"), trusted) == "172.18.0.2"
+
+
+@pytest.mark.parametrize(
+    ("address", "bucket"),
+    [
+        ("198.51.100.1", "198.51.100.1"),
+        ("2001:db8:1:2:3:4:5:6", "2001:db8:1:2::/64"),
+        ("2001:DB8:1:2::ffff", "2001:db8:1:2::/64"),
+        ("::ffff:198.51.100.1", "198.51.100.1"),
+        ("fe80::1%eth0", "fe80::/64"),
+        ("testclient", "testclient"),
+        ("", ""),
+    ],
+)
+def test_client_bucket(address: str, bucket: str) -> None:
+    assert client_bucket(address) == bucket
+
+
+def test_ipv6_clients_are_hashed_per_64() -> None:
+    hasher = ClientHasher("salt")
+    assert hasher("2001:db8:1:2::1") == hasher("2001:db8:1:2:ffff:ffff:ffff:ffff")
+    assert hasher("2001:db8:1:2::1") != hasher("2001:db8:1:3::1")
+    assert hasher("::ffff:198.51.100.1") == hasher("198.51.100.1")
+
+
+def test_rate_limit_spans_an_ipv6_64(make_client) -> None:
+    client = make_client(rate_limit_per_ip_per_hour=1, trusted_proxies=("*",), peer="10.0.0.2")
+
+    def ask(forwarded: str) -> httpx.Response:
+        headers = {"X-Forwarded-For": forwarded}
+        return client.post("/api/v1/answer", json={"question": "Domanda?"}, headers=headers)
+
+    assert ask("2001:db8:1:2::1").status_code == 200
+    assert ask("2001:db8:1:2::abcd").status_code == 429  # same /64
+    assert ask("198.51.100.9, 2001:db8:1:2::1").status_code == 429  # spoofed leftmost hop
+    assert ask("2001:db8:1:3::1").status_code == 200
 
 
 def test_client_hash_is_salted() -> None:

@@ -13,6 +13,7 @@ from appalti_qa.config import Settings
 from appalti_qa.web.asking import AskService
 from appalti_qa.web.backend import Backend
 from appalti_qa.web.clients import ClientHasher, TrustedProxies, client_address
+from appalti_qa.web.ratelimit import RateLimiter
 
 
 @dataclass(frozen=True, slots=True)
@@ -24,6 +25,7 @@ class WebContext:
     trusted_proxies: TrustedProxies
     hasher: ClientHasher
     results_path: Path
+    search_limiter: RateLimiter  # GET /api/v1/search, separate from the answering budget
 
     def client_hash(self, request: Request) -> str:
         return self.hasher(client_address(request, self.trusted_proxies))

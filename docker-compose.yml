@@ -1,12 +1,16 @@
+# Local development and demo stack. Credentials come from .env (see .env.example); the fallback
+# password "appalti" is only meant for a local database that is not reachable from the network.
 services:
   db:
     image: pgvector/pgvector:pg16
     environment:
       POSTGRES_DB: appalti
       POSTGRES_USER: appalti
-      POSTGRES_PASSWORD: appalti
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-appalti}
+    # Published on the loopback interface only, for the CLI and tests running on the host.
+    # In a deployment, remove this mapping: the app reaches the database on the compose network.
     ports:
-      - "5433:5432"
+      - "127.0.0.1:5433:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -25,11 +29,15 @@ services:
       - path: .env
         required: false
     environment:
-      DATABASE_URL: postgresql://appalti:appalti@db:5432/appalti
+      # Overrides DATABASE_URL from .env, which points at the host port. The password is
+      # inserted as is: URL-encode characters such as @ : / in POSTGRES_PASSWORD.
+      DATABASE_URL: postgresql://appalti:${POSTGRES_PASSWORD:-appalti}@db:5432/appalti
     ports:
       - "8000:8000"
     volumes:
       - hf-cache:/home/app/.cache/huggingface
+      # ./data is in the repository (data/.gitkeep), so it is owned by the user who cloned it
+      # rather than created as root by the Docker daemon; the image runs as uid 1000.
       - ./data:/app/data
       - ./eval:/app/eval
     restart: unless-stopped

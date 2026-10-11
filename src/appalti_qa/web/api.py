@@ -15,12 +15,13 @@ from pydantic import BaseModel, Field
 from appalti_qa.config import RetrievalMode
 from appalti_qa.keys import is_valid_key
 from appalti_qa.models import Answer, Hit
-from appalti_qa.web.asking import InvalidInput, RateLimited, Unavailable, today
+from appalti_qa.web.asking import InvalidInput, RateLimited, Unavailable, today, wait_text
 from appalti_qa.web.context import Context
 
 router = APIRouter()
 
 DB_UNAVAILABLE = "L'archivio dei testi non è al momento disponibile. Riprova più tardi."
+MAX_SEARCH_K = 20  # each search embeds the query and ranks candidates on CPU
 
 _PYDANTIC_MESSAGES = {
     "missing": "Campo obbligatorio.",
@@ -95,22 +96,33 @@ def answer(
 @router.get("/api/v1/search", response_model=list[Hit], tags=["norma"])
 def search(
     ctx: Context,
+    request: Request,
     q: Annotated[str, Query(description="Testo da cercare.")],
     date: Annotated[dt.date | None, Query(description="Data del testo vigente.")] = None,
-    k: Annotated[int | None, Query(ge=1, le=50, description="Numero di risultati.")] = None,
+    k: Annotated[
+        int | None, Query(ge=1, le=MAX_SEARCH_K, description="Numero di risultati.")
+    ] = None,
     mode: Annotated[RetrievalMode | None, Query(description="Tipo di ricerca.")] = None,
 ) -> list[Hit] | JSONResponse:
-    """Units in force at `date` that best match `q` (no answer generation)."""
+    """Units in force at `date` that best match `q` (no answer generation; rate limited)."""
     query = q.strip()
     limit = ctx.settings.max_question_chars
     if not query or len(query) > limit:
         message = f"Il testo da cercare deve avere tra 1 e {limit} caratteri."
         return JSONResponse({"detail": [_detail(["query", "q"], message, "value_error")]}, 422)
+    exceeded = ctx.search_limiter.acquire(ctx.client_hash(request))
+    if exceeded is not None:
+        message = (
+            f"Hai raggiunto il limite di {exceeded.limit} ricerche all'ora. "
+            f"Potrai fare una nuova ricerca tra circa {wait_text(exceeded.retry_after_s)}."
+        )
+        headers = {"Retry-After": str(exceeded.retry_after_s)}
+        return JSONResponse({"detail": message}, 429, headers=headers)
     try:
         return ctx.backend.search(
             query,
             date or today(),
-            k or ctx.settings.default_top_k,
+            min(k or ctx.settings.default_top_k, MAX_SEARCH_K),
             mode or ctx.settings.retrieval_mode,
         )
     except psycopg.Error:

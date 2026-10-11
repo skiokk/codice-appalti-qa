@@ -129,3 +129,36 @@ def test_unknown_api_path_is_json_404(client: TestClient) -> None:
 def test_openapi_lists_endpoints(client: TestClient) -> None:
     paths = client.get("/api/openapi.json").json()["paths"]
     assert {"/api/v1/answer", "/api/ask", "/api/v1/search", "/healthz"} <= paths.keys()
+
+
+def test_search_caps_k(make_client, backend, hit_factory) -> None:
+    backend.hits = [hit_factory(f"{number}/1") for number in range(1, 31)]
+    client = make_client(default_top_k=50)
+    assert len(client.get("/api/v1/search", params={"q": "soglie"}).json()) == 20
+    assert client.get("/api/v1/search", params={"q": "soglie", "k": 20}).status_code == 200
+    response = client.get("/api/v1/search", params={"q": "soglie", "k": 21})
+    assert response.status_code == 422
+    assert response.json()["detail"][0]["msg"] == "Deve essere al massimo 20."
+    assert [k for _, _, k, _ in backend.searches] == [20, 20]
+
+
+def test_search_rate_limit_is_per_client_and_separate(make_client, backend) -> None:
+    client = make_client(rate_limit_search_per_ip_per_hour=2, rate_limit_per_ip_per_hour=1)
+    assert client.get("/api/v1/search", params={"q": " "}).status_code == 422  # not counted
+    for _ in range(2):
+        assert client.get("/api/v1/search", params={"q": "soglie"}).status_code == 200
+    response = client.get("/api/v1/search", params={"q": "soglie"})
+    assert response.status_code == 429
+    assert "limite di 2 ricerche all'ora" in response.json()["detail"]
+    assert 0 < int(response.headers["Retry-After"]) <= 3600
+    assert len(backend.searches) == 2
+    # the answering budget is untouched, and answering does not use the search budget
+    assert client.post("/api/v1/answer", json={"question": "Domanda?"}).status_code == 200
+    other = make_client(rate_limit_search_per_ip_per_hour=2, peer="198.51.100.8")
+    assert other.get("/api/v1/search", params={"q": "soglie"}).status_code == 200
+
+
+def test_search_rate_limit_zero_disables(make_client) -> None:
+    client = make_client(rate_limit_search_per_ip_per_hour=0)
+    for _ in range(3):
+        assert client.get("/api/v1/search", params={"q": "soglie"}).status_code == 200

@@ -3,7 +3,8 @@
 Configuration comes from `Settings`; the reverse proxies whose `X-Forwarded-For` header is
 trusted come from `trusted_proxies` or, by default, `Settings.forwarded_allow_ips`
 (FORWARDED_ALLOW_IPS: comma-separated addresses or networks, the same convention as uvicorn).
-When it is empty, the header is ignored and the TCP peer identifies the client.
+When it is empty, the header is ignored and the TCP peer identifies the client. Unlike uvicorn,
+"*" makes only the rightmost hop count (see `clients`), so clients cannot choose their address.
 """
 
 from __future__ import annotations
@@ -84,6 +85,8 @@ def _server_error_handler(request: Request, exc: Exception) -> Response:
     if _is_api(request):
         return JSONResponse({"detail": message}, 500)
     ctx: WebContext = request.app.state.web
+    if request.headers.get("hx-request") == "true":  # swapped into the result region
+        return pages.render_error_partial(ctx, request, 500, "Errore del servizio", message)
     return pages.render_error(ctx, request, 500, "Errore del servizio", message)
 
 
@@ -123,6 +126,7 @@ def create_app(
     )
     salt = settings.client_hash_salt.get_secret_value() if settings.client_hash_salt else None
     limiter = RateLimiter(settings.rate_limit_per_ip_per_hour, settings.rate_limit_global_per_day)
+    search_limiter = RateLimiter(settings.rate_limit_search_per_ip_per_hour, global_per_day=0)
     app = FastAPI(
         title="Codice Appalti QA",
         description="Domande sul Codice dei contratti pubblici (D.Lgs. 36/2023) con fonti citate.",
@@ -141,6 +145,7 @@ def create_app(
         trusted_proxies=proxies,
         hasher=ClientHasher(salt),
         results_path=results_path,
+        search_limiter=search_limiter,
     )
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
     app.include_router(pages.router)

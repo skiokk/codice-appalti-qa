@@ -2,24 +2,30 @@
 
 `DatabaseBackend` delegates corpus queries to `appalti_qa.retrieval` (imported lazily) on
 connections from the shared pool, with a short acquisition timeout so that pages degrade quickly
-when the database is down. Tests pass their own `Backend` or a connection factory.
+when the database is down. Searches embed the query through a small LRU cache. Tests pass their
+own `Backend` or a connection factory.
 """
 
 from __future__ import annotations
 
 import logging
+import threading
 import time
 from collections.abc import Callable
 from contextlib import AbstractContextManager
 from dataclasses import asdict, dataclass, field
 from datetime import date
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
 import psycopg
 
 from appalti_qa.config import RetrievalMode
 from appalti_qa.db import get_pool
 from appalti_qa.models import Answer, Hit, UnitVersion
+from appalti_qa.web.querycache import QUERY_CACHE_SIZE, CachedQueryEmbedder
+
+if TYPE_CHECKING:
+    from appalti_qa.retrieval import Embedder
 
 logger = logging.getLogger(__name__)
 
@@ -100,11 +106,28 @@ class DatabaseBackend:
         connect: ConnectionFactory = _pool_connection,
         *,
         clock: Callable[[], float] = time.monotonic,
+        embedder: Embedder | None = None,
+        query_cache_size: int = QUERY_CACHE_SIZE,
     ) -> None:
+        """`embedder` defaults to `retrieval.get_embedder()`, wrapped on the first search."""
         self._connect = connect
         self._clock = clock
         self._range: tuple[date, date] | None = None
         self._range_expires = float("-inf")
+        self._embedder = embedder
+        self._query_cache_size = query_cache_size
+        self._cached_embedder: CachedQueryEmbedder | None = None
+        self._embedder_lock = threading.Lock()
+
+    def query_embedder(self) -> CachedQueryEmbedder:
+        """The embedder used by `search`, with its cache of recent query vectors."""
+        with self._embedder_lock:
+            if self._cached_embedder is None:
+                from appalti_qa import retrieval
+
+                inner = self._embedder or retrieval.get_embedder()
+                self._cached_embedder = CachedQueryEmbedder(inner, self._query_cache_size)
+            return self._cached_embedder
 
     def available_range(self) -> tuple[date, date] | None:
         now = self._clock()
@@ -136,8 +159,9 @@ class DatabaseBackend:
     def search(self, query: str, at_date: date, k: int, mode: RetrievalMode) -> list[Hit]:
         from appalti_qa import retrieval
 
+        embedder = self.query_embedder()
         with self._connect() as conn:
-            return retrieval.search(query, at_date, k, mode, conn=conn)
+            return retrieval.search(query, at_date, k, mode, conn=conn, embedder=embedder)
 
     def ping(self) -> bool:
         try:

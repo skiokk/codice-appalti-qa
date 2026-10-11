@@ -331,3 +331,36 @@ def test_static_assets_are_served(client: TestClient) -> None:
 def test_backend_failure_during_answer_is_503(client: TestClient, stub_answer) -> None:
     stub_answer.error = psycopg.OperationalError("connection refused")
     assert client.post("/chiedi", data={"domanda": "Domanda?"}).status_code == 503
+
+
+def test_unexpected_htmx_failure_swaps_an_alert(client: TestClient, stub_answer) -> None:
+    stub_answer.error = RuntimeError("bug")
+    failing = TestClient(client.app, raise_server_exceptions=False)
+    response = failing.post("/chiedi", data={"domanda": "Domanda?"}, headers=HTMX)
+    assert response.status_code == 500
+    assert "<html" not in response.text and "bug" not in response.text
+    alert = lxml.html.fragment_fromstring(response.text)
+    assert alert.get("role") == "alert"
+    assert alert.xpath("string(.//h2)") == "Errore del servizio"
+    assert "Riprova più tardi" in alert.text_content()
+    page = failing.post("/chiedi", data={"domanda": "Domanda?"})
+    assert page.status_code == 500
+    assert parse(page.text).xpath("string(//h1)") == "Errore del servizio"
+
+
+def test_htmx_swaps_server_rendered_errors_only(client: TestClient) -> None:
+    meta = parse(client.get("/").text).xpath("//meta[@name='htmx-config']")[0]
+    rules = json.loads(meta.get("content"))["responseHandling"]
+    swapped = next(rule["code"] for rule in rules if rule["swap"] and "5" in rule["code"])
+    assert set(swapped.split("|")) == {"422", "429", "500", "503"}
+    assert rules[-1] == {"code": "[45]..", "swap": False, "error": True}
+
+
+def test_script_reports_failures_that_are_not_swapped(client: TestClient) -> None:
+    script = client.get("/static/js/app.js").text
+    for event in ("htmx:responseError", "htmx:sendError", "htmx:timeout"):
+        assert f'addEventListener("{event}"' in script
+    assert 'setAttribute("role", "alert")' in script
+    assert 'removeAttribute("aria-busy")' in script
+    assert 'classList.remove("htmx-request")' in script
+    assert ".innerHTML" not in script  # messages are inserted as text

@@ -27,6 +27,7 @@ def test_missing_or_invalid_file(tmp_path: Path) -> None:
         ("cost_usd", 0.01234, "0,0123 USD"),
         ("judge_output_tokens", 1500, "1.500"),
         ("errors", 0, "0"),
+        ("cost_unknown", 3, "3"),
     ],
 )
 def test_format_metric(name: str, value: object, expected: str) -> None:
@@ -38,6 +39,8 @@ def test_metric_labels() -> None:
     assert metric_label("hit@1") == "Hit@1"
     assert metric_label("article_recall@5") == "Recall@5 per articolo"
     assert metric_label("citation_precision") == "Precisione delle citazioni"
+    assert metric_label("cost_unknown") == "Risposte senza prezzo noto"
+    assert metric_label("judge_cost_unknown") == "Valutazioni senza prezzo noto"
     assert metric_label("new_metric") == "New metric"
 
 

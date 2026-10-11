@@ -72,6 +72,14 @@ def render_error(
     return _render(ctx, request, "errore.html", {"title": title, "message": message}, status_code)
 
 
+def render_error_partial(
+    ctx: WebContext, request: Request, status_code: int, title: str, message: str
+) -> HTMLResponse:
+    """The error as an alert for htmx requests, which swap it into the result region."""
+    page = {"title": title, "message": message}
+    return _render(ctx, request, "errore_htmx.html", page, status_code)
+
+
 @router.get("/", name="home")
 def home(ctx: Context, request: Request, domanda: str = "") -> HTMLResponse:
     form = _form(ctx, domanda[: ctx.settings.max_question_chars])

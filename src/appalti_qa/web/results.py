@@ -35,14 +35,26 @@ _METRIC_LABELS = {
     "input_tokens": "Token in ingresso",
     "output_tokens": "Token in uscita",
     "cost_usd": "Costo stimato",
+    "cost_unknown": "Risposte senza prezzo noto",
     "judge_input_tokens": "Token in ingresso del giudice",
     "judge_output_tokens": "Token in uscita del giudice",
     "judge_cost_usd": "Costo stimato del giudice",
+    "judge_cost_unknown": "Valutazioni senza prezzo noto",
     "errors": "Errori",
     "judge_errors": "Errori del giudice",
 }
 _AT_K = re.compile(r"(?P<article>article_)?(?P<name>recall|hit)@(?P<k>\d+)")
-_COUNTS = {"n", "count", "size", "verified", "evaluated", "errors", "judge_errors"}
+_COUNTS = {
+    "n",
+    "count",
+    "size",
+    "verified",
+    "evaluated",
+    "errors",
+    "judge_errors",
+    "cost_unknown",
+    "judge_cost_unknown",
+}
 # Columns of the per-kind and per-topic tables (the overall table lists every metric).
 _BREAKDOWN_METRICS = (
     "n",

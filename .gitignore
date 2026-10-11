@@ -1,4 +1,7 @@
-data/raw/
+# Local data (downloaded snapshots). The directory itself is tracked through data/.gitkeep, so
+# that the ./data bind mount in docker-compose.yml is owned by the user, not created as root.
+/data/*
+!/data/.gitkeep
 .venv/
 __pycache__/
 .env

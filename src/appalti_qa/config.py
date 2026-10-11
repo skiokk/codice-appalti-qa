@@ -55,11 +55,14 @@ class Settings(BaseSettings):
     max_question_chars: int = Field(default=500, gt=0)
     rate_limit_per_ip_per_hour: int = Field(default=20, ge=0)
     rate_limit_global_per_day: int = Field(default=500, ge=0)
+    # GET /api/v1/search embeds each query on CPU: limited per client, more generously
+    rate_limit_search_per_ip_per_hour: int = Field(default=120, ge=0)
     client_hash_salt: SecretStr | None = (
         None  # salt for hashing client IPs; random per process if unset
     )
 
-    # Comma-separated IPs/CIDRs of trusted reverse proxies; empty = ignore X-Forwarded-For
+    # Comma-separated IPs/CIDRs of trusted reverse proxies; empty = ignore X-Forwarded-For.
+    # "*" trusts any peer but then only the rightmost X-Forwarded-For hop is used.
     forwarded_allow_ips: str = ""
 
     log_level: str = "INFO"
