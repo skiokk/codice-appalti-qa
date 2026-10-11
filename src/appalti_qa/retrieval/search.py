@@ -166,6 +166,43 @@ def search(
         return _to_hits(c, ranked[:k], at_date)
 
 
+def candidate_pool(
+    query: str,
+    at_date: date,
+    size: int = 40,
+    *,
+    conn: psycopg.Connection | None = None,
+    embedder: Embedder | None = None,
+    settings: Settings | None = None,
+) -> list[Hit]:
+    """Up to `size` candidates for a reranker, best first (decision 9).
+
+    Three lists of `size` units in force at `at_date` (lexical, semantic on whole units and
+    semantic on passages, without hubness correction) fused by RRF with equal weights; units
+    cited in the query come first with a score of at least `PINNED_SCORE`, as in hybrid search.
+    """
+    if size < 1:
+        raise ValueError("size must be positive")
+    query = query.strip()
+    if not query:
+        return []
+    settings = settings or get_settings()
+    embedder = embedder or get_embedder(settings)
+    units = settings.model_copy(update={"semantic_granularity": "unit"})
+    passages = settings.model_copy(
+        update={"semantic_granularity": "passage", "hubness_weight": 0.0}
+    )
+    with _session(conn) as c:
+        vector = embedder.embed_queries([query])[0]
+        lists = [
+            _lexical(c, query, at_date, size),
+            _semantic(c, query, at_date, size, embedder, units, vector),
+            _semantic(c, query, at_date, size, embedder, passages, vector),
+        ]
+        ranked = _fused(c, query, at_date, lists, [1.0, 1.0, 1.0], settings)
+        return _to_hits(c, ranked[:size], at_date)
+
+
 def lookup(
     refs: Sequence[str], at_date: date, *, conn: psycopg.Connection | None = None
 ) -> list[Hit]:
@@ -265,7 +302,9 @@ def _semantic(
     limit: int,
     embedder: Embedder,
     settings: Settings,
+    vector: object | None = None,
 ) -> list[_Candidate]:
+    """Nearest versions to the query (embedded here unless `vector` is given)."""
     model = embedder.model_name
     passages = settings.semantic_granularity == "passage"
     if passages and not _has_embeddings(conn, "unit_passages", model):
@@ -274,7 +313,8 @@ def _semantic(
     if not passages and not _has_embeddings(conn, "unit_versions", model):
         logger.warning("No embeddings from %s: semantic search skipped (run `embed`)", model)
         return []
-    vector = embedder.embed_queries([query])[0]
+    if vector is None:
+        vector = embedder.embed_queries([query])[0]
     pool = PASSAGE_POOL * limit if passages else limit
     # Iterative HNSW scans (pgvector 0.8) keep returning neighbours until enough rows pass the
     # date filter; relaxed order may swap close neighbours, hence the final sort.
@@ -309,12 +349,24 @@ def _hybrid(
     depth = settings.fusion_depth * k
     lexical = _lexical(conn, query, at_date, depth)
     semantic = _semantic(conn, query, at_date, depth, embedder, settings)
-    fused = reciprocal_rank_fusion(
-        [[c.version_id for c in lexical], [c.version_id for c in semantic]],
-        k=settings.rrf_k,
-        weights=[settings.lexical_weight, 1.0],
+    return _fused(
+        conn, query, at_date, [lexical, semantic], [settings.lexical_weight, 1.0], settings
     )
-    by_id = {c.version_id: c for c in (*lexical, *semantic)}
+
+
+def _fused(
+    conn: psycopg.Connection,
+    query: str,
+    at_date: date,
+    lists: Sequence[list[_Candidate]],
+    weights: Sequence[float],
+    settings: Settings,
+) -> list[_Candidate]:
+    """The lists fused by weighted RRF, with the units the query cites pinned first."""
+    fused = reciprocal_rank_fusion(
+        [[c.version_id for c in ranking] for ranking in lists], k=settings.rrf_k, weights=weights
+    )
+    by_id = {c.version_id: c for ranking in lists for c in ranking}
     ranked = {vid: replace(by_id[vid], score=score) for vid, score in fused.items()}
     refs = extract_refs(query)
     if refs:

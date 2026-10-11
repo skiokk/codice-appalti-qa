@@ -26,7 +26,22 @@ _MARKER = re.compile(r"[ \t]*\[(\d+)\]")
 
 
 def _default_retriever(settings: Settings, mode: RetrievalMode) -> Retriever:
-    from appalti_qa.retrieval import search
+    """Search in `mode`; hybrid answers rerank a wider pool when reranking is configured."""
+    from appalti_qa.retrieval import candidate_pool, search
+
+    if mode == "hybrid" and settings.reranks():
+        from appalti_qa.answer.rerank import RerankingRetriever
+        from appalti_qa.llm.reranker import AnthropicReranker
+
+        def pool(question: str, at_date: date, size: int) -> list[Hit]:
+            return candidate_pool(question, at_date, size, settings=settings)
+
+        return RerankingRetriever(
+            pool,
+            AnthropicReranker(settings),
+            pool_size=settings.rerank_pool,
+            max_ranked=settings.rerank_max,
+        )
 
     def retrieve(question: str, at_date: date, k: int) -> list[Hit]:
         return search(question, at_date, k, mode=mode, settings=settings)

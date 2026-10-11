@@ -1,8 +1,8 @@
 """Shared fixtures.
 
-Every test session runs offline: API keys are blanked and providers forced to "fake". DB tests get
-a throwaway database on the compose service (port 5433), created once per session and dropped at
-the end; they are skipped when the server is unreachable.
+Every test session runs offline: API keys are blanked, providers forced to "fake" and reranking
+off. DB tests get a throwaway database on the compose service (port 5433), created once per
+session and dropped at the end; they are skipped when the server is unreachable.
 """
 
 from __future__ import annotations
@@ -21,6 +21,7 @@ os.environ.update(
     {
         "LLM_PROVIDER": "fake",
         "JUDGE_PROVIDER": "fake",
+        "RERANK_PROVIDER": "none",
         "ANTHROPIC_API_KEY": "",
         "GROQ_API_KEY": "",
     }

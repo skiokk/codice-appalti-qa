@@ -29,6 +29,7 @@ from appalti_qa.evaluation.dataset import (
 )
 from appalti_qa.evaluation.judge import get_judge
 from appalti_qa.evaluation.metrics import DEFAULT_K_VALUES, AnswerFn, Retriever, UsageFn
+from appalti_qa.evaluation.pricing import usage_cost
 from appalti_qa.evaluation.report import (
     DEFAULT_RESULTS_DIR,
     LATEST,
@@ -47,11 +48,13 @@ from appalti_qa.evaluation.xlsx import export_xlsx, review_import
 from appalti_qa.models import Answer, Citation, Hit
 
 if TYPE_CHECKING:
+    from appalti_qa.answer.rerank import RerankingRetriever
     from appalti_qa.retrieval import Embedder
 
 MODES: tuple[str, ...] = get_args(RetrievalMode)
 PROVIDERS: tuple[str, ...] = get_args(ProviderName)
 EMBEDDING_MODES: frozenset[str] = frozenset({"semantic", "hybrid"})
+RERANK = "rerank"  # name of the reranked retrieval (decision 9) among the evaluated modes
 DEFAULT_SWEEP_DIR = DEFAULT_RESULTS_DIR / "sweeps"
 # The settings that shape retrieval, recorded in the configuration of every retrieval run.
 RETRIEVAL_SETTINGS: tuple[str, ...] = (
@@ -130,6 +133,55 @@ def _search_retriever(
     return retrieve
 
 
+def _rerank_retriever(
+    conn: psycopg.Connection, settings: Settings, embedder: Embedder | None = None
+) -> RerankingRetriever:
+    """The reranked retrieval of answers (decision 9) on the evaluation connection."""
+    from appalti_qa.answer.rerank import RerankingRetriever
+    from appalti_qa.llm.reranker import AnthropicReranker
+    from appalti_qa.retrieval import candidate_pool
+
+    def pool(question: str, at_date: date, size: int) -> list[Hit]:
+        try:
+            return candidate_pool(
+                question, at_date, size, conn=conn, settings=settings, embedder=embedder
+            )
+        finally:
+            conn.rollback()
+
+    return RerankingRetriever(
+        pool,
+        AnthropicReranker(settings),
+        pool_size=settings.rerank_pool,
+        max_ranked=settings.rerank_max,
+    )
+
+
+def _rerank_summary(retriever: RerankingRetriever, settings: Settings) -> dict[str, Any]:
+    """The reranker's configuration, calls, failures and the tokens and cost not yet taken."""
+    usage = retriever.take()
+    return {
+        "model": settings.rerank_model,
+        "pool": settings.rerank_pool,
+        "max_ranked": settings.rerank_max,
+        "calls": retriever.calls,
+        "failures": retriever.failures,
+        "input_tokens": sum(part.input_tokens for part in usage),
+        "output_tokens": sum(part.output_tokens for part in usage),
+        "cost_usd": usage_cost("anthropic", usage),
+    }
+
+
+def _with_rerank(settings: Settings, requested: bool) -> Settings | None:
+    """Settings with reranking on when `requested`; None when it is requested without a key."""
+    if not requested:
+        return settings
+    if settings.api_key("anthropic") is None:
+        print("Reranking needs ANTHROPIC_API_KEY.", file=sys.stderr)
+        return None
+    return settings.model_copy(update={"rerank_provider": "anthropic"})
+
+
 def _answer_backend(
     settings: Settings,
     provider_name: ProviderName,
@@ -139,10 +191,14 @@ def _answer_backend(
     k: int,
     mode: RetrievalMode,
     delay_s: float,
+    extra_usage: UsageFn | None = None,
 ) -> AnswerBackend:
-    """The answer function of the run, with a meter of the tokens each model consumed."""
+    """The answer function of the run, with a meter of the tokens each model consumed.
+
+    `extra_usage` adds the tokens of calls made outside the provider, such as reranking.
+    """
     from appalti_qa.answer import answer_question
-    from appalti_qa.llm import UsageMeter, get_provider
+    from appalti_qa.llm import ModelUsage, UsageMeter, get_provider
 
     provider = UsageMeter(get_provider(settings, provider=provider_name, model=model))
 
@@ -153,7 +209,10 @@ def _answer_backend(
             question, at_date, settings, provider=provider, retriever=retrieve, k=k, mode=mode
         )
 
-    return AnswerBackend(answer, provider.name, provider.model, provider.take)
+    def usage() -> list[ModelUsage]:
+        return [*provider.take(), *(extra_usage() if extra_usage else ())]
+
+    return AnswerBackend(answer, provider.name, provider.model, usage)
 
 
 # --- helpers ----------------------------------------------------------------------------------
@@ -292,7 +351,9 @@ def _cmd_retrieval(args: argparse.Namespace) -> int:
     if selection is None:
         return 1
     items, summary = selection
-    settings = get_settings()
+    settings = _with_rerank(get_settings(), args.rerank)
+    if settings is None:
+        return 2
     modes = list(dict.fromkeys(args.mode or MODES))
     primary = settings.retrieval_mode if settings.retrieval_mode in modes else modes[0]
     config = {
@@ -306,15 +367,23 @@ def _cmd_retrieval(args: argparse.Namespace) -> int:
         "split": args.split,
         **{name: getattr(settings, name) for name in RETRIEVAL_SETTINGS},
     }
+    evaluated = [*modes, RERANK] if args.rerank else modes
     with _open_db() as conn:
-        refusal = _embedding_refusal(settings, modes, items, conn) if args.publish else None
+        refusal = _embedding_refusal(settings, evaluated, items, conn) if args.publish else None
         if refusal:
             print(refusal, file=sys.stderr)
             return 2
-        retrievers = {mode: _search_retriever(mode, conn, settings) for mode in modes}
+        retrievers: dict[str, Retriever] = {
+            mode: _search_retriever(cast(RetrievalMode, mode), conn, settings) for mode in modes
+        }
+        reranked = _rerank_retriever(conn, settings) if args.rerank else None
+        if reranked is not None:
+            retrievers[RERANK] = reranked
         results = run_retrieval_eval(
             items, retrievers, primary=primary, dataset=summary, config=config, k_values=args.k
         )
+    if reranked is not None:
+        results["rerank"] = _rerank_summary(reranked, settings)
     return _write(results, args.out, publish=args.publish)
 
 
@@ -390,7 +459,7 @@ def _embedding_refusal(
     embedder or a partly embedded corpus it returns little or nothing and hybrid search is in
     effect lexical: the published numbers would not describe the system.
     """
-    if not EMBEDDING_MODES.intersection(modes):
+    if not EMBEDDING_MODES.union({RERANK}).intersection(modes):
         return None
     from appalti_qa.retrieval.embedding import FAKE_MODEL_NAME
 
@@ -401,16 +470,25 @@ def _embedding_refusal(
             " embeddings of the corpus and hybrid search is in effect lexical. Set EMBEDDING_MODEL"
             " to the model the corpus was embedded with, or run without --publish."
         )
-    passages = settings.semantic_granularity == "passage"
+    granularities = set()
+    if EMBEDDING_MODES.intersection(modes):
+        granularities.add(settings.semantic_granularity == "passage")
+    if RERANK in modes:  # the candidate pool searches whole units and passages
+        granularities.update({False, True})
     days = {item.vigenza for item in items}
-    embedded, total = embedding_coverage(conn, model, days, passages=passages)
-    if total and embedded / total >= MIN_EMBEDDING_COVERAGE:
-        return None
+    for passages in sorted(granularities):
+        embedded, total = embedding_coverage(conn, model, days, passages=passages)
+        if not total or embedded / total < MIN_EMBEDDING_COVERAGE:
+            return _coverage_refusal(model, embedded, total, passages=passages)
+    return None
+
+
+def _coverage_refusal(model: str, embedded: int, total: int, *, passages: bool) -> str:
     share = f" ({embedded / total:.1%})" if total else ""
     return (
         f"Refusing to publish: {embedded:,} of the {total:,} versions in force on the evaluated"
         f" dates{share} have {'passage embeddings' if passages else 'an embedding'} from {model};"
-        " at least {MIN_EMBEDDING_COVERAGE:.0%}"
+        f" at least {MIN_EMBEDDING_COVERAGE:.0%}"
         " are needed, otherwise semantic search misses the rest and hybrid search degrades to"
         " lexical. Run `appalti-qa embed` (or set EMBEDDING_MODEL to the model the corpus was"
         " embedded with), or run without --publish."
@@ -436,6 +514,10 @@ def _cmd_answers(args: argparse.Namespace) -> int:
     items, summary = selection
     if provider_name != requested:
         print(f"No API key for {requested}: answering with the fake provider.", file=sys.stderr)
+    reranking = _with_rerank(settings, args.rerank)
+    if reranking is None:
+        return 2
+    settings = reranking
     judge = get_judge(judge_settings)
     mode = args.mode or settings.retrieval_mode
     k = args.k or settings.default_top_k
@@ -444,11 +526,22 @@ def _cmd_answers(args: argparse.Namespace) -> int:
         if refusal:
             print(refusal, file=sys.stderr)
             return 2
-        # Answers retrieve exactly as the app does (same k and mode); the retrieval metrics make
-        # their own deeper calls, since the fused ranking depends on the requested depth.
-        retrieve = _search_retriever(mode, conn, settings)
+        # Answers retrieve exactly as the app does (same k and mode, reranked when the app
+        # reranks); the retrieval metrics make their own deeper calls, since the fused ranking
+        # depends on the requested depth.
+        reranked = (
+            _rerank_retriever(conn, settings) if mode == "hybrid" and settings.reranks() else None
+        )
+        retrieve = reranked or _search_retriever(mode, conn, settings)
         backend = _answer_backend(
-            settings, provider_name, args.model, retrieve, k=k, mode=mode, delay_s=args.delay
+            settings,
+            provider_name,
+            args.model,
+            retrieve,
+            k=k,
+            mode=mode,
+            delay_s=args.delay,
+            extra_usage=reranked.take if reranked else None,
         )
         provider, model = backend.provider, backend.model
         config: dict[str, Any] = {
@@ -462,6 +555,8 @@ def _cmd_answers(args: argparse.Namespace) -> int:
         }
         if provider == "anthropic":
             config["effort"] = settings.llm_effort
+        if reranked is not None:
+            config["rerank_model"] = settings.rerank_model
         print(
             f"Evaluating {len(items)} questions with {provider}/{model}, judge {judge.name},"
             f" retrieval {mode} k={k}.",
@@ -476,6 +571,10 @@ def _cmd_answers(args: argparse.Namespace) -> int:
             config=config,
             usage=backend.usage,
         )
+    if reranked is not None:
+        # Answer costs include their reranking; this counts the calls and failures of the whole
+        # run (the retrieval metrics rerank again) and the tokens of the retrieval metrics.
+        results["rerank"] = _rerank_summary(reranked, settings)
     return _write(results, args.out, publish=args.publish)
 
 
@@ -574,6 +673,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _add_selection(p)
     p.add_argument("--mode", action="append", choices=MODES, help="repeatable; default: all")
+    p.add_argument(
+        "--rerank",
+        action="store_true",
+        help=f"also evaluate the reranked retrieval of answers as mode {RERANK!r} (decision 9)",
+    )
     p.add_argument("--k", type=_k_list, default=DEFAULT_K_VALUES, help="cutoffs, e.g. 1,3,5,10")
     _add_split(p)
     p.add_argument(
@@ -613,6 +717,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--model", help="default: the provider's configured model")
     p.add_argument("--mode", choices=MODES, help="retrieval mode (default: RETRIEVAL_MODE)")
     p.add_argument("--k", type=int, help="sources given to the model (default: DEFAULT_TOP_K)")
+    p.add_argument(
+        "--rerank",
+        action="store_true",
+        help="rerank the sources of hybrid answers (default: RERANK_PROVIDER)",
+    )
     p.add_argument("--judge-provider", choices=PROVIDERS, help="default: JUDGE_PROVIDER")
     p.add_argument("--delay", type=float, default=0.0, help="seconds between questions")
     p.add_argument(

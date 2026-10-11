@@ -47,7 +47,7 @@ def stub_backends(
         modes.append(mode)
         return stub_retriever
 
-    def answer_backend(settings, provider_name, model, retrieve, *, k, mode, delay_s):
+    def answer_backend(settings, provider_name, model, retrieve, *, k, mode, delay_s, **_):
         return eval_cli.AnswerBackend(stub_answer, provider_name, model or "fake")
 
     monkeypatch.setattr(eval_cli, "_search_retriever", search_retriever)
@@ -273,6 +273,127 @@ def test_retrieval_publish_keeps_published_answers(
     assert f"Kept {tmp_path / 'latest'}.json: it holds an answer run." in capsys.readouterr().out
 
 
+class _ScriptedReranker:
+    """Puts the last candidate first; records the questions it ranked."""
+
+    model = "claude-haiku-5-5"
+
+    def __init__(self) -> None:
+        self.questions: list[str] = []
+
+    def rank(self, question: str, candidates, *, at_date: date, limit: int):
+        from appalti_qa.llm import ModelUsage
+        from appalti_qa.llm.reranker import Ranking
+
+        self.questions.append(question)
+        return Ranking([len(candidates) - 1], ModelUsage("claude-haiku-5-5", 10_000, 100))
+
+
+@pytest.fixture
+def stub_rerank(monkeypatch: pytest.MonkeyPatch, stub_retriever: Callable) -> _ScriptedReranker:
+    from appalti_qa.answer.rerank import RerankingRetriever
+
+    reranker = _ScriptedReranker()
+
+    def pool(question: str, at_date: date, size: int) -> list[Hit]:
+        # pool scores are RRF scores, below PINNED_SCORE: nothing is pinned
+        hits = stub_retriever(question, at_date, size)
+        return [hit.model_copy(update={"score": 0.03}) for hit in hits]
+
+    def rerank_retriever(conn: object, settings: Settings, embedder: object = None):
+        return RerankingRetriever(
+            pool,
+            reranker,
+            pool_size=settings.rerank_pool,
+            max_ranked=settings.rerank_max,
+        )
+
+    monkeypatch.setattr(eval_cli, "_rerank_retriever", rerank_retriever)
+    return reranker
+
+
+def test_retrieval_rerank_needs_a_key(
+    tmp_path: Path, dataset_path: Path, stub_backends: list[str], capsys: pytest.CaptureFixture
+) -> None:
+    argv = ["retrieval", "--dataset", str(dataset_path), "--all", "--out", str(tmp_path)]
+    assert cli_main([*argv, "--rerank"]) == 2
+    assert "Reranking needs ANTHROPIC_API_KEY." in capsys.readouterr().err
+    assert not list(tmp_path.glob("*.json"))
+
+
+def test_retrieval_rerank_adds_a_mode_with_its_cost(
+    tmp_path: Path,
+    dataset_path: Path,
+    stub_backends: list[str],
+    stub_rerank: _ScriptedReranker,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+    get_settings.cache_clear()
+    argv = ["retrieval", "--dataset", str(dataset_path), "--all", "--out", str(tmp_path)]
+    assert cli_main([*argv, "--mode", "hybrid", "--rerank"]) == 0
+    (path,) = tmp_path.glob("*_retrieval.json")
+    results = json.loads(path.read_text())
+    assert results["retrieval_by_mode"].keys() == {"hybrid", "rerank"}
+    assert results["retrieval"] == results["retrieval_by_mode"]["hybrid"]  # primary unchanged
+    assert len(stub_rerank.questions) == 3  # the questions with expected refs
+    assert results["rerank"] == {
+        "model": "claude-haiku-5-5",
+        "pool": 40,
+        "max_ranked": 15,
+        "calls": 3,
+        "failures": 0,
+        "input_tokens": 30_000,
+        "output_tokens": 300,
+        "cost_usd": pytest.approx(3 * (10_000 * 0.10 + 100 * 0.50) / 1e6),
+    }
+    q001 = next(item for item in results["items"] if item["id"] == "Q001")
+    hybrid, reranked = q001["by_mode"]["hybrid"], q001["by_mode"]["rerank"]
+    assert reranked["retrieved"] == ["1/1", "50/2", "50/1"]  # the last candidate moved first
+    assert hybrid["mrr"] == 0.5 and reranked["mrr"] == pytest.approx(1 / 3)
+
+
+def test_retrieval_rerank_publish_checks_unit_and_passage_embeddings(
+    tmp_path: Path,
+    dataset_path: Path,
+    stub_backends: list[str],
+    stub_rerank: _ScriptedReranker,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture,
+) -> None:
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+    get_settings.cache_clear()
+    checked: list[bool] = []
+
+    def embedding_coverage(conn, model, days, *, passages=False):
+        checked.append(passages)
+        return (2811, 2811) if not passages else (0, 2811)
+
+    monkeypatch.setattr(eval_cli, "embedding_coverage", embedding_coverage)
+    argv = ["retrieval", "--dataset", str(dataset_path), "--all", "--out", str(tmp_path)]
+    assert cli_main([*argv, "--mode", "lexical", "--rerank", "--publish"]) == 2
+    assert checked == [False, True]
+    assert "have passage embeddings from" in capsys.readouterr().err
+
+
+def test_answers_rerank_their_sources_and_count_the_cost(
+    tmp_path: Path,
+    dataset_path: Path,
+    stub_backends: list[str],
+    stub_rerank: _ScriptedReranker,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+    get_settings.cache_clear()
+    argv = ["answers", "--dataset", str(dataset_path), "--out", str(tmp_path), "--ids", "Q001"]
+    assert cli_main([*argv, "--rerank"]) == 0
+    results = json.loads(_run_file(tmp_path).read_text())
+    assert results["config"]["rerank_model"] == "claude-haiku-5-5"
+    assert stub_backends == []  # no plain search retriever: answers rerank like the app
+    assert results["rerank"]["calls"] == 1  # the stub answers do not retrieve; the metrics do
+    assert results["rerank"]["failures"] == 0
+
+
 def test_answers_command(
     tmp_path: Path, dataset_path: Path, stub_backends: list[str], capsys: pytest.CaptureFixture
 ) -> None:
@@ -391,7 +512,7 @@ def test_answers_retrieve_like_production(
 
         return retrieve
 
-    def answer_backend(settings, provider_name, model, retrieve, *, k, mode, delay_s):
+    def answer_backend(settings, provider_name, model, retrieve, *, k, mode, delay_s, **_):
         def answer(question: str, at_date: date) -> Answer:
             hits = retrieve(question, at_date, k)
             return Answer(

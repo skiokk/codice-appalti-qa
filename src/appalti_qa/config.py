@@ -13,6 +13,7 @@ ProviderName = Literal["fake", "anthropic", "groq"]
 Effort = Literal["low", "medium", "high", "xhigh", "max"]
 RetrievalMode = Literal["lexical", "semantic", "hybrid"]
 SemanticGranularity = Literal["unit", "passage"]
+RerankProvider = Literal["none", "anthropic"]
 
 
 class Settings(BaseSettings):
@@ -56,6 +57,12 @@ class Settings(BaseSettings):
     hubness_weight: float = Field(default=0.0, ge=0)  # passage score -= weight * hub_score
     min_relevance_score: float = 0.0
 
+    # Reranking of the sources of an answer (decision 9); search alone is never reranked
+    rerank_provider: RerankProvider = "none"
+    rerank_model: str = "claude-haiku-5-5"
+    rerank_pool: int = Field(default=40, gt=0, le=100)  # candidates the reranker reads
+    rerank_max: int = Field(default=15, gt=0)  # units the reranker may put first
+
     # Public demo limits
     max_question_chars: int = Field(default=500, gt=0)
     rate_limit_per_ip_per_hour: int = Field(default=20, ge=0)
@@ -84,6 +91,11 @@ class Settings(BaseSettings):
         if requested == "fake" or self.api_key(requested) is None:
             return "fake"
         return requested
+
+
+    def reranks(self) -> bool:
+        """True when answers rerank their sources: a rerank provider is set and has a key."""
+        return self.rerank_provider != "none" and self.api_key(self.rerank_provider) is not None
 
 
 @lru_cache(maxsize=1)

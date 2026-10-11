@@ -10,14 +10,23 @@ from appalti_qa.retrieval.embedding import (
     passage_text,
 )
 from appalti_qa.retrieval.refs import extract_refs
-from appalti_qa.retrieval.search import available_range, history, lookup, search
+from appalti_qa.retrieval.search import (
+    PINNED_SCORE,
+    available_range,
+    candidate_pool,
+    history,
+    lookup,
+    search,
+)
 from appalti_qa.retrieval.urls import normattiva_url
 
 __all__ = [
+    "PINNED_SCORE",
     "Embedder",
     "FakeEmbedder",
     "SentenceTransformerEmbedder",
     "available_range",
+    "candidate_pool",
     "cli_embed",
     "embed_missing",
     "extract_refs",
