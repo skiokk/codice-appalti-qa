@@ -1,0 +1,133 @@
+# Evaluation
+
+Package `appalti_qa.evaluation` measures how well the system finds and cites the right provisions
+of D.Lgs. 36/2023 and how good its answers are, on the question set in `eval/dataset.yaml`. It
+runs offline by default: with no API key, answers come from the fake provider and correctness is
+scored by a lexical-overlap judge.
+
+| Module | Content |
+| --- | --- |
+| `dataset.py` | `EvalItem`, `load_dataset`, `validate_dataset`, `select_items`, corpus lookups |
+| `metrics.py` | `retrieval_metrics`, `answer_metrics`, grouping by kind and category |
+| `judge.py` | `JudgeVerdict`, `LLMJudge` (Italian rubric, JSON verdict), `OverlapJudge`, `get_judge` |
+| `pricing.py` | token prices and `cost_usd` |
+| `runner.py` | `CachedRetriever`, run ids, results documents for retrieval and answer runs |
+| `report.py` | `write_results`, `render_report` (markdown), `render_comparison` |
+| `xlsx.py` | `export_xlsx` / `import_xlsx`: the human review round trip |
+| `yaml_writer.py` | writes the dataset back, rewriting only changed lines and keeping comments |
+| `cli.py` | `cli_main`, the `appalti-qa eval` commands |
+
+## Dataset
+
+The format is in `docs/architecture.md` (section 8) and `eval/README_dataset.md`. `status` is
+`bozza`, `verificata` or `corretta`, plus `scartata` for questions the reviewer discarded: they
+stay in the file (ids are stable) but are never evaluated.
+
+`appalti-qa eval validate` runs the static checks (unique ids, valid keys, `unanswerable` exactly
+when there are no refs, `multi` with two or more refs, excerpt present and at most 300
+characters). With `--db` it also checks, for each question at its `vigenza` date, that every ref
+matches a unit in force and not repealed, and that the excerpt occurs (whitespace-normalised) in
+the text of the referenced units.
+
+Runs evaluate only verified questions (`verificata` or `corretta`) unless `--all` is given; every
+results file records how many of the evaluated questions are verified, and the report flags runs
+that include drafts.
+
+## Metrics
+
+**Retrieval** (no LLM; questions with expected refs, each retrieved at its own `vigenza` date):
+
+- comma level: an expected ref is found when a retrieved unit matches it with
+  `keys.ref_matches` (`50/1/b` is found by unit `50/1`, `50` by any comma of article 50);
+- article level: the article of each distinct expected ref (`50`, `all:I.1/2`; `all:I.3` for
+  allegato blocks) is looked up among the articles of the retrieved units;
+- `recall@k`: share of expected refs (or articles) found in the top k; `hit@k`: at least one
+  found; `mrr`: reciprocal rank of the first one found. Defaults: k = 1, 3, 5, 10.
+
+`appalti-qa eval retrieval` computes them for each mode (lexical, semantic, hybrid).
+
+**Answers** (`appalti-qa eval answers`, alias `run`): each question goes through
+`answer.answer_question` with the configured provider. The run retrieves once per question
+(`CachedRetriever`), so the retrieval metrics in the results and the sources given to the model
+come from the same ranking.
+
+- `correctness`: judge score, 1 correct, 0.5 partial, 0 wrong. An abstention scores 1 on an
+  unanswerable question and 0 otherwise, without calling the judge.
+- `citation_precision`: share of cited units that match an expected ref (answers with
+  citations); `citation_recall`: share of expected refs cited (abstentions count as 0). Both are
+  computed on questions with expected refs only.
+- `abstention_accuracy`: the system abstains on unanswerable questions and answers the others;
+  `abstention_rate` is reported too.
+- `latency_p50_ms`, `latency_p95_ms` (nearest rank), token totals, `cost_usd` and
+  `judge_cost_usd`.
+- A failing answer or judge call (timeout, rate limit, unparsable verdict) is recorded on the item
+  (`error`, `judge_error`), counted, and left out of the averages it affects.
+
+Every group (overall, `by_kind`, `by_category`) carries `n`.
+
+## Judges
+
+`get_judge()` resolves `JUDGE_PROVIDER` like the answer provider: without a key it falls back to
+`OverlapJudge`. `LLMJudge` sends an Italian rubric through `LLMProvider.complete` and expects
+`{"verdict": "correct" | "partial" | "wrong", "reason": "..."}`; replies wrapped in prose or code
+fences, and Italian labels, are accepted. `OverlapJudge` is the share of the expected answer's
+content words (accent-folded, stopwords removed, six-letter stems, numbers kept) present in the
+answer: 50% or more is correct, 25% or more partial. It is a pipeline check, not a quality
+measure, and the report says so.
+
+## Cost
+
+List prices per million tokens, without prompt-caching discounts:
+
+| Model | Input | Output |
+| --- | --- | --- |
+| `claude-opus-5-5` | $4.00 | $20.00 |
+| `claude-sonnet-5-5` | $2.00 | $10.00 |
+| `claude-haiku-5-5` | $0.10 | $0.50 |
+| Groq models (free tier), fake provider | $0 | $0 |
+
+An Anthropic model missing from the table makes the cost `null` rather than a wrong number.
+
+## Results
+
+`write_results` writes `eval/results/<run_id>.json` and `<run_id>.md`, where the run id is
+`<UTC timestamp>_<provider>_<model>` (for example `20261011T120000Z_anthropic_claude-opus-5-5`),
+and copies both to `latest.json` / `latest.md`, which the web page `/valutazione` reads. The JSON
+follows `docs/architecture.md` and adds, per item, the expected refs, the answer text and
+citations, citation precision and recall, tokens, cost and the judge verdict. Retrieval-only runs
+(`<timestamp>_retrieval.json`) add `retrieval_by_mode` and per-item rankings for each mode, and
+do not replace `latest.json`.
+
+```bash
+appalti-qa eval validate --db
+appalti-qa eval retrieval --all --k 1,3,5,10           # all three modes
+appalti-qa eval answers --provider anthropic            # verified questions only
+appalti-qa eval answers --provider groq --all --delay 2 # free tier rate limits
+appalti-qa eval report eval/results/latest.json
+appalti-qa eval compare eval/results/2026*.json
+```
+
+## Human review
+
+`appalti-qa eval export-xlsx revisione.xlsx [--with-answers RESULTS.json]` writes a workbook for
+the reviewer: one row per question with Italian headers, wrapped text, frozen header and ID
+column, an "Esito" dropdown (OK / Da correggere / Scartare), a free-text "Correzione" column, an
+instructions sheet and, when the database is reachable, the text in force of the referenced units
+("Testo vigente"). A hidden sheet keeps the exported values.
+
+`appalti-qa eval import-xlsx revisione.xlsx [--dry-run] [--db]` merges the review into the YAML:
+
+| Reviewer action | Result |
+| --- | --- |
+| OK, no edits | `verificata` (`corretta` stays `corretta`) |
+| cells edited (question, answer, refs, excerpt, date, kind, category, difficulty) | edits applied, `corretta` |
+| Da correggere, no edits | `bozza` |
+| Scartare | `scartata` |
+| text in "Correzione" | appended to `notes` as `Revisione: ...` |
+| no Esito | row ignored (a warning if cells were edited) |
+
+Edits are detected against the exported values, so a field changed in the YAML after the export
+is reported as a conflict instead of being overwritten. Changed questions go through the static
+checks (and the corpus checks with `--db`) before anything is written; on any problem the file is
+left untouched. The file keeps its order, layout and comments: only the changed lines are
+rewritten, and importing the same workbook twice changes nothing.

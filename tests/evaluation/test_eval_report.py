@@ -1,0 +1,150 @@
+import json
+from collections.abc import Callable
+from datetime import UTC, date, datetime
+from pathlib import Path
+
+import pytest
+
+from appalti_qa.evaluation.dataset import EvalItem
+from appalti_qa.evaluation.judge import OverlapJudge
+from appalti_qa.evaluation.report import render_comparison, render_report, write_results
+from appalti_qa.evaluation.runner import (
+    CachedRetriever,
+    dataset_summary,
+    new_run_id,
+    run_answer_eval,
+    run_retrieval_eval,
+)
+
+NOW = datetime(2026, 10, 11, 12, 0, 0, tzinfo=UTC)
+
+
+@pytest.fixture
+def answer_results(items: list[EvalItem], stub_answer: Callable, stub_retriever: Callable) -> dict:
+    summary = dataset_summary(Path("eval/dataset.yaml"), items, items, include_drafts=True)
+    config = {"provider": "fake", "model": "fake", "retrieval_mode": "hybrid", "judge": "overlap"}
+    return run_answer_eval(
+        items,
+        stub_answer,
+        OverlapJudge(),
+        retrieve=stub_retriever,
+        dataset=summary,
+        config=config,
+        now=NOW,
+    )
+
+
+def test_cached_retriever(stub_retriever: Callable, items: list[EvalItem]) -> None:
+    calls: list[int] = []
+
+    def counting(question: str, at_date: date, k: int) -> list:
+        calls.append(k)
+        return stub_retriever(question, at_date, k)
+
+    cached = CachedRetriever(counting, depth=10)
+    question, day = items[0].question, items[0].vigenza
+    assert [h.unit_key for h in cached(question, day, 2)] == ["50/2", "50/1"]
+    assert len(cached(question, day, 10)) == 3
+    cached(question, day, 20)
+    cached(question, date(2030, 1, 1), 1)
+    assert calls == [10, 20, 10]
+
+
+def test_run_ids() -> None:
+    assert new_run_id("fake", "fake", now=NOW) == "20261011T120000Z_fake_fake"
+    assert new_run_id("groq", "openai/gpt-oss-120b", now=NOW).endswith("_groq_openai-gpt-oss-120b")
+    assert new_run_id("retrieval", None, now=NOW) == "20261011T120000Z_retrieval"
+
+
+def test_dataset_summary(items: list[EvalItem]) -> None:
+    summary = dataset_summary(Path("d.yaml"), items, items[:3], include_drafts=True)
+    assert summary == {
+        "path": "d.yaml",
+        "size": 4,
+        "verified": 2,
+        "evaluated": 3,
+        "evaluated_verified": 2,
+        "selection": "all",
+    }
+
+
+def test_run_answer_eval_shape(answer_results: dict) -> None:
+    assert answer_results["run_id"] == "20261011T120000Z_fake_fake"
+    assert answer_results["created_at"] == "2026-10-11T12:00:00Z"
+    assert list(answer_results) == [
+        "run_id",
+        "created_at",
+        "dataset",
+        "config",
+        "retrieval",
+        "answer",
+        "items",
+    ]
+    assert set(answer_results["retrieval"]) == {"overall", "by_kind", "by_category"}
+    assert answer_results["answer"]["overall"]["correctness"] == 0.5
+    item = answer_results["items"][0]
+    assert {"id", "retrieved", "cited", "abstained", "score", "rationale", "latency_ms"} <= set(
+        item
+    )
+
+
+def test_run_retrieval_eval(items: list[EvalItem], stub_retriever: Callable) -> None:
+    def empty(question: str, at_date: date, k: int) -> list:
+        return []
+
+    results = run_retrieval_eval(
+        items,
+        {"lexical": empty, "hybrid": stub_retriever},
+        primary="hybrid",
+        dataset={},
+        config={"retrieval_mode": "hybrid"},
+        k_values=(1, 5),
+        now=NOW,
+    )
+    assert results["run_id"] == "20261011T120000Z_retrieval"
+    assert results["retrieval"] is results["retrieval_by_mode"]["hybrid"]
+    assert results["retrieval_by_mode"]["lexical"]["overall"]["recall@5"] == 0.0
+    first = results["items"][0]
+    assert first["id"] == "Q001" and first["expected_refs"] == ["50/1/b"]
+    assert first["by_mode"]["hybrid"]["retrieved"] == ["50/2", "50/1", "1/1"]
+    assert first["by_mode"]["lexical"]["mrr"] == 0.0
+    assert "## Retrieval" in render_report(results)
+
+
+def test_write_results(tmp_path: Path, answer_results: dict) -> None:
+    path = write_results(answer_results, tmp_path / "results")
+    assert path.name == "20261011T120000Z_fake_fake.json"
+    names = sorted(p.name for p in path.parent.iterdir())
+    assert names == [
+        "20261011T120000Z_fake_fake.json",
+        "20261011T120000Z_fake_fake.md",
+        "latest.json",
+        "latest.md",
+    ]
+    assert json.loads((path.parent / "latest.json").read_text()) == json.loads(path.read_text())
+
+    other = write_results({**answer_results, "run_id": "x"}, tmp_path / "other", latest=False)
+    assert not (other.parent / "latest.json").exists()
+
+
+def test_render_report(answer_results: dict) -> None:
+    answer_results["items"][1]["rationale"] = "Motivo con | barra\nsu due righe"
+    report = render_report(answer_results)
+    assert report.startswith("# Evaluation report `20261011T120000Z_fake_fake`\n")
+    assert "**Draft questions included.** 2 of the evaluated questions" in report
+    assert "deterministic fake provider" in report
+    assert "lexical-overlap proxy" in report
+    assert "| hybrid | 3 | 16.7% | 66.7% | 66.7% | 66.7% | 0.500 |" in report
+    assert "### Answers by kind" in report
+    assert "| Correctness | 50.0% |" in report
+    assert "Motivo con \\| barra su due righe" in report
+    assert "| Q002 | temporal | 0.000 | 50/1/b | 1/1 |" in report
+
+
+def test_render_comparison(answer_results: dict) -> None:
+    other = {**answer_results, "run_id": "second", "answer": None}
+    table = render_comparison([answer_results, other])
+    lines = table.strip().splitlines()
+    assert len(lines) == 4
+    assert lines[2].startswith("| 20261011T120000Z_fake_fake | fake | fake | hybrid | 4 | 66.7%")
+    assert lines[3].startswith("| second |") and "n/a" in lines[3]
