@@ -29,8 +29,8 @@ reads it but does not write questions into it, except through `import-xlsx` (sec
 
 Rules for every module:
 
-- Do not edit files you do not own. If you need a shared change (a dependency, a setting, a column,
-  a fixture), state it in your final report instead.
+- Do not edit files owned by another module. A shared change (a dependency, a setting, a column,
+  a fixture) is proposed and applied to the foundation files, then recorded here.
 - Everything runs offline by default: `LLM_PROVIDER=fake`, no API keys. Never require a key in
   tests; tests must not hit the network (use `httpx.MockTransport` or fakes).
 - DB tests use the fixtures in `tests/conftest.py` (`db_url`, `db_conn`, `seeded_conn`,
@@ -75,13 +75,23 @@ def key_label(key: str) -> str                        # "50/1/b" -> "Art. 50, co
 def sort_key(key: str) -> tuple                       # document order, "4" < "4-bis" < "4-ter" < "5"
 ```
 
-Observed in the corpus (snapshot 2026-10-11): 233 articles, 1319 paragraphs (24 without `<num>`,
-i.e. single-comma articles → article units), 690 points, 323 allegato docs. Allegato docs are named
-`"Allegato I.1-art. 2"`, `"Allegati - Allegato I.01 art. 1"`, `"Allegato I.4-art 1"`,
-`"Allegato I.7-art. 4 bis"`, `"Allegato I.3"` (no articles), `"Allegato I.4-Tabella A"`,
-`"Allegato II.2-Allegato II.2 bis Tabella A"`; `"Allegati - Indice allegati"` is not content.
-Allegato bodies are flat text inside one `<p>` (`"Articolo 2.\n Definizioni...\n1. ...\na) ..."`)
-and must be split into commi by line-leading numbers.
+Observed in the corpus:
+
+- Snapshot 2026-10-11: 233 articles, 1319 paragraphs, 690 points, 323 allegato docs. The 24
+  paragraphs without `<num>` are not single-comma articles: they are headings exported as
+  paragraphs, Normattiva "AGGIORNAMENTO" notes, and the repealed art. 109, which is the only
+  article-level unit. Ingested: 2,811 units (1,319 commi, 1 article unit, 1,491 allegato units
+  across 41 allegati).
+- Exports up to 2024-12-31 are flat: article `<num>` is `"Art. 50."` and each article is one
+  paragraph of running text with commi and lettere inline, so commi and lettere are found in the
+  text (a comma number counts only after punctuation, continuing the numbering, outside «...»
+  quotes). Exports from 2025-04-01 have one `<paragraph>` per comma and one `<point>` per lettera.
+- Allegato docs are named `"Allegato I.1-art. 2"`, `"Allegati - Allegato I.01 art. 1"`,
+  `"Allegato I.4-art 1"`, `"Allegato I.7-art. 4 bis"`, `"Allegato I.3"` (no articles),
+  `"Allegato I.4-Tabella A"`, `"Allegato II.2-Allegato II.2 bis Tabella A"` (the last allegato named
+  wins: `II.2-bis`); `"Allegati - Indice allegati"` is not content. Allegato bodies are flat text in
+  every snapshot and are split into commi by line-leading numbers. An allegato with no numbered
+  blocks at all is one unit with the bare key `"all:X"`.
 
 ## 3. Shared code (foundation)
 
@@ -100,7 +110,7 @@ class Settings(BaseSettings):            # env vars / .env, case-insensitive, ex
     embedding_dim: int = 768; embedding_device: str = "cpu"; embedding_batch_size: int = 32
     llm_provider: ProviderName = "fake"
     llm_model: str = "claude-opus-5-5"; llm_effort: Effort = "medium"
-    llm_max_tokens: int = 2048; llm_timeout_s: float = 60.0
+    llm_max_tokens: int = 16000; llm_timeout_s: float = 60.0   # ceiling; reasoning tokens count
     groq_model: str = "openai/gpt-oss-120b"
     anthropic_api_key: SecretStr | None = None; groq_api_key: SecretStr | None = None
     judge_provider: ProviderName = "fake"; judge_model: str = "claude-opus-5-5"
@@ -109,6 +119,7 @@ class Settings(BaseSettings):            # env vars / .env, case-insensitive, ex
     max_question_chars: int = 500
     rate_limit_per_ip_per_hour: int = 20; rate_limit_global_per_day: int = 500
     client_hash_salt: SecretStr | None = None
+    forwarded_allow_ips: str = ""          # trusted reverse proxies (IPs/CIDRs) for X-Forwarded-For
     log_level: str = "INFO"
 
     def api_key(self, provider: ProviderName) -> str | None
@@ -132,7 +143,8 @@ def close_pool() -> None
 ```
 
 Connections return tuples; use `conn.cursor(row_factory=dict_row)` where convenient. Embeddings
-are `numpy.ndarray` (float32) or `pgvector.Vector` on the way in and come back as `numpy.ndarray`.
+are `numpy.ndarray` (float32) or `pgvector.Vector` on the way in and come back as `pgvector.Vector`
+(use `.to_numpy()` for an array; a `Vector` can be written back unchanged).
 Functions that take `conn: psycopg.Connection | None = None` use `with get_pool().connection()`
 when it is `None`. Functions given a connection do not close it and do not commit unless their
 docstring says so (writers like `load_corpus` and `embed_missing` commit).
@@ -202,7 +214,7 @@ when the target is not available yet.
 | `ingest` | `appalti_qa.ingest.cli_ingest(args) -> int` | `raw_dir: str` |
 | `embed` | `appalti_qa.retrieval.cli_embed(args) -> int` | `batch_size: int`, `limit: int \| None` |
 | `serve` | `appalti_qa.web.cli_serve(args) -> int` | `host: str = "127.0.0.1"`, `port: int = 8000`, `reload: bool` |
-| `eval ...` | `appalti_qa.evaluation.cli_main(argv: list[str]) -> int` | raw remaining argv; evaluation owns its sub-parser |
+| `eval ...` | `appalti_qa.evaluation.cli_main(argv: list[str]) -> int` | raw remaining argv, leading options included (`eval -h`); evaluation owns its sub-parser |
 
 ### 3.6 Test fixtures (`tests/conftest.py`)
 
@@ -241,6 +253,7 @@ class ActInfo:
 class ParsedUnit:
     key: str; kind: UnitKind; article: str | None; comma: str | None; allegato: str | None
     heading: str | None; text: str; ordinal: int; repealed: bool = False
+    amended: bool = False              # the export marks (part of) the text as inserted/replaced
 
 @dataclass(frozen=True, slots=True)
 class ParsedSnapshot:
@@ -287,14 +300,21 @@ Versioning rules:
 
 1. Sort by `vigenza_date`; skip a snapshot whose `sha256` equals the previous kept one (several
    consecutive files are byte-identical).
-2. Effective date: `vigenza_date`, unless `expression_date` lies strictly after the previous kept
-   snapshot's `vigenza_date` and before `vigenza_date`, in which case the expression date is used
-   (e.g. file `20261011` carries expression `2026-08-26`). Document the rule you implement.
-3. For each key, a new version starts when `(text_hash, heading)` differs from the open version;
-   the open version gets `valid_to` = the new `valid_from`. A key missing from a later snapshot is
-   closed at that snapshot's effective date; if it reappears it gets a new version.
-4. `changed_by` of a version = the amendment event dated on its `valid_from`, otherwise the latest
-   amendment event with `date <= valid_from`; `None` for versions from the first snapshot.
+2. Effective date: `vigenza_date`, unless `expression_date` lies strictly after the `vigenza_date`
+   of the previous file (byte-identical files included) and before `vigenza_date`, in which case
+   the expression date is used. The lifecycle dates are publication dates of the amending acts;
+   the expression date is when the consolidated text actually took effect (file `20261011`
+   carries `2026-08-26`, D.Lgs. 149/2026 published 2026-08-11; file `20260811` carries
+   `2026-04-07`, L. 34/2026 published 2026-03-23 after a 15-day vacatio legis).
+3. For each key, a new version starts when the wording (ignoring line breaks and `((...))`
+   markers) or the heading differs from the open version, so the 2025 switch from flat to
+   structured exports creates no versions; an unchanged version keeps the latest rendering of its
+   text. The open version gets `valid_to` = the new `valid_from`. A key missing from a later
+   snapshot is closed at that snapshot's effective date; if it reappears it gets a new version.
+4. `changed_by` of a version = the latest amendment in the lifecycle of the snapshot that
+   introduced it (so a version is credited to the act that brought it, not to a later act
+   published before its effective date); `None` for versions from the first snapshot. When several
+   acts enter one snapshot, the latest one is credited.
 5. Versions of the last snapshot stay open (`valid_to=None`).
 
 ```python
@@ -313,7 +333,7 @@ and restore them on matching new rows.
 ```python
 # appalti_qa/ingest/download.py
 def download_snapshots(raw_dir: Path, *, delay_s: float = 2.0, force: bool = False,
-                       client: httpx.Client | None = None) -> list[Path]
+                       client: httpx.Client | None = None, today: date | None = None) -> list[Path]
 def cli_download(args: argparse.Namespace) -> int
 def cli_ingest(args: argparse.Namespace) -> int      # parse raw_dir, build, init_schema, load, print stats
 ```
@@ -333,20 +353,23 @@ Package `appalti_qa.retrieval`; exports `Embedder`, `SentenceTransformerEmbedder
 ```python
 # appalti_qa/retrieval/embedding.py
 class Embedder(Protocol):
-    model_name: str
+    model_name: str                     # read-only properties: plain attributes conform
     dim: int
     def embed_queries(self, texts: Sequence[str]) -> np.ndarray    # (n, dim) float32, L2-normalised
     def embed_passages(self, texts: Sequence[str]) -> np.ndarray
 
 class SentenceTransformerEmbedder:      # lazy model load; "query: " / "passage: " prefixes (e5)
-    def __init__(self, model_name: str, *, device: str = "cpu", batch_size: int = 32) -> None
+    def __init__(self, model_name: str, *, device: str = "cpu", batch_size: int = 32,
+                 query_prefix: str = "query: ", passage_prefix: str = "passage: ") -> None
 class FakeEmbedder:                     # deterministic hashed bag-of-words, model_name "fake"
     def __init__(self, dim: int = 768) -> None
 
 def get_embedder(settings: Settings | None = None) -> Embedder   # cached; "fake" -> FakeEmbedder
 def passage_text(heading: str | None, text: str) -> str         # exact string embedded (no prefix)
 def embed_missing(conn: psycopg.Connection, embedder: Embedder, *, batch_size: int = 32,
-                  limit: int | None = None) -> int              # rows updated; commits per batch
+                  limit: int | None = None,
+                  progress: Callable[[int, int], None] | None = None) -> int
+                  # rows updated; commits per batch; limit caps distinct passages
 def cli_embed(args: argparse.Namespace) -> int
 ```
 
@@ -371,18 +394,23 @@ def normattiva_url(unit_key: str, at_date: date) -> str
 ```
 
 - Only versions in force at `at_date` and not `repealed` are searched.
-- `lexical`: `websearch_to_tsquery('italian', query)` on `tsv`, ranked by `ts_rank_cd`.
+- `lexical`: `websearch_to_tsquery('italian', query)` on `tsv`, ranked by `ts_rank_cd`. Because
+  AND-ing every word of a natural-language question rarely matches, `&` is relaxed to `|`
+  (phrases kept) and the rank is weighted by the share of query lexemes the unit contains; queries
+  containing a negation are kept as written.
 - `semantic`: cosine similarity (`1 - (embedding <=> q)`) with the query embedding; use
   `SET LOCAL hnsw.ef_search` / `hnsw.iterative_scan` (pgvector 0.8) so the date filter does not
   starve results; rows without embeddings are ignored.
 - `hybrid`: reciprocal rank fusion of the lexical and semantic lists (each `4*k` long) with
-  `settings.rrf_k`; units explicitly referenced in the query (`extract_refs`) are placed first.
+  `settings.rrf_k`; units explicitly referenced in the query (`extract_refs`) are placed first
+  (score `1.0` + their fusion score). Without embeddings for the configured model, semantic search
+  logs a warning and returns `[]` without loading the model, so hybrid degrades to lexical.
 - `Hit.score` is the mode's score (higher is better); ties broken by `units.ordinal`.
   `Hit.modified_by` = events of the unit's versions with `valid_from <= at_date`, by date.
 - `lookup` returns every unit matching any ref (`keys.ref_matches`) in force at `at_date`, in
   document order, score `1.0`. `history` returns all versions of matching units, ordered by
-  ordinal then `valid_from`, with `changed_by` filled. `available_range` = (earliest `valid_from`,
-  latest snapshot `vigenza_date`) or `None` if empty.
+  ordinal then `valid_from`, with `changed_by` filled; both return `[]` for invalid keys.
+  `available_range` = (earliest `valid_from`, latest snapshot `vigenza_date`) or `None` if empty.
 - `normattiva_url`: `https://www.normattiva.it/uri-res/N2Ls?urn:nir:stato:decreto.legislativo:2023-03-31;36~art{N}!vig={YYYY-MM-DD}`
   where `{N}` is the article without dash (`225-bis` → `225bis`); for allegati, the act URL without
   the `~art` part.
@@ -475,7 +503,10 @@ Package `appalti_qa.web`; exports `create_app`, `cli_serve`, `AnswerFn`.
 # appalti_qa/web/app.py
 AnswerFn = Callable[[str, date], Answer]
 
-def create_app(settings: Settings | None = None, *, answer_fn: AnswerFn | None = None) -> FastAPI
+def create_app(settings: Settings | None = None, *, answer_fn: AnswerFn | None = None,
+               backend: Backend | None = None,          # corpus lookups + qa_log (tests: in-memory)
+               results_path: Path = Path("eval/results/latest.json"),
+               trusted_proxies: Iterable[str] | None = None) -> FastAPI   # default: settings
 def cli_serve(args: argparse.Namespace) -> int     # uvicorn "appalti_qa.web:create_app", factory=True
 ```
 
@@ -495,14 +526,15 @@ Pages (Italian, Bootstrap Italia, htmx; templates in `web/templates/`, static in
 - `GET /valutazione` — renders `eval/results/latest.json` if present (see section 8).
 - `GET /informazioni` — sources, method, limitations, privacy, accessibility statement.
 
-JSON API (`/api/v1`): `POST /api/v1/answer` `{"question": str, "date": "YYYY-MM-DD"?}` → `Answer`;
+JSON API (`/api/v1`, OpenAPI docs at `/api/docs`): `POST /api/v1/answer` (alias `POST /api/ask`)
+`{"question": str, "date": "YYYY-MM-DD"?}` → `Answer`;
 `GET /api/v1/search?q=&date=&k=&mode=` → `list[Hit]`; `GET /api/v1/units/{key:path}?date=` →
 `list[Hit]`; `GET /healthz` → `{"status": "ok", "db": bool}`.
 
 Rate limiting on the answering endpoints only: per client (hashed IP with `client_hash_salt`) per
 rolling hour and global per day, from settings (0 disables a limit); 429 with `Retry-After` and an
-Italian message. Each answer is logged to `qa_log` (best effort; a logging failure never breaks the
-response). Validation errors → 422 with Italian messages; `LLMError` → 503 with a generic message.
+Italian message. Limits are kept in process (they reset on restart and are per worker). Each
+answer is logged to `qa_log` (best effort; a logging failure never breaks the response). Validation errors → 422 with Italian messages; `LLMError` → 503 with a generic message.
 
 Accessibility (WCAG 2.1 AA): `lang="it"`, skip link, labelled controls, visible focus, sufficient
 contrast, `aria-live="polite"` on the answer region, `hx-indicator` with a text alternative, no
@@ -529,7 +561,7 @@ Dataset format (`eval/dataset.yaml`, a YAML list of mappings):
   expected_refs: ["50/1/b"]  # canonical keys; [] for unanswerable
   source_excerpt: "..."      # verbatim excerpt (<=300 chars) of the referenced text, for the human verifier
   difficulty: easy | medium | hard
-  status: bozza              # bozza | verificata | corretta (set by the human reviewer)
+  status: bozza              # bozza | verificata | corretta | scartata (set by the human reviewer)
   notes: ""
 ```
 
@@ -558,28 +590,36 @@ def answer_metrics(items, answer: Callable[[str, date], Answer], judge: Judge) -
     # tokens; overall, by kind and by category; plus per-item records
 
 # appalti_qa/evaluation/judge.py
-@dataclass(frozen=True) class JudgeVerdict: score: float; rationale: str
+@dataclass(frozen=True) class JudgeVerdict:
+    score: float; rationale: str; input_tokens: int = 0; output_tokens: int = 0
+    cost_usd: float | None = 0.0
 class Judge(Protocol):
+    name: str                   # "overlap" or "<provider>:<model>"
     def grade(self, item: EvalItem, answer: Answer) -> JudgeVerdict
 class LLMJudge: ...             # LLMProvider.complete with an Italian rubric, JSON verdict
 class OverlapJudge: ...         # deterministic token overlap; used when the judge resolves to fake
 def get_judge(settings: Settings | None = None) -> Judge
 
 # appalti_qa/evaluation/xlsx.py
-def export_xlsx(items: Sequence[EvalItem], path: Path, *, answers: Mapping[str, Answer] | None = None) -> None
+def export_xlsx(items: Sequence[EvalItem], path: Path, *, answers: Mapping[str, Answer] | None = None,
+                unit_texts: Mapping[str, str] | None = None) -> None
 def import_xlsx(path: Path, dataset_path: Path) -> list[EvalItem]   # merge reviewer edits, rewrite YAML
 
 # appalti_qa/evaluation/report.py
-def write_results(results: dict, out_dir: Path = Path("eval/results")) -> Path
+def write_results(results: dict, out_dir: Path = Path("eval/results"), *, latest: bool = True) -> Path
 def render_report(results: dict) -> str                             # markdown
 def cli_main(argv: Sequence[str] | None = None) -> int
 ```
 
 CLI (`appalti-qa eval <sub>`): `validate [--db]`, `retrieval [--mode] [--k]`,
-`run [--provider] [--model] [--mode] [--limit] [--ids Q001,...]`, `report RESULTS.json`,
-`export-xlsx OUT.xlsx [--with-answers RESULTS.json]`, `import-xlsx IN.xlsx`,
-`compare RESULTS.json...`. The xlsx is for a human reviewer: Italian column headers, wrapped text,
-a `status` dropdown (`bozza`, `verificata`, `corretta`), frozen header row.
+`answers` (alias `run`) `[--provider] [--model] [--mode] [--k] [--limit] [--ids Q001,...]`,
+`report RESULTS.json`, `export-xlsx OUT.xlsx [--with-answers RESULTS.json]`,
+`import-xlsx IN.xlsx [--db] [--dry-run]`, `compare RESULTS.json...`. Runs use only `verificata` and
+`corretta` questions unless `--all` is given; retrieval-only runs never overwrite `latest.json`.
+The xlsx is for a human reviewer: Italian column headers, wrapped text, frozen header row, an
+`Esito` dropdown (`OK`, `Da correggere`, `Scartare`) and a `Correzione` column; on import, edited
+rows become `corretta`, `OK` rows `verificata` and `Scartare` rows `scartata` (kept, never
+evaluated). Every metric group carries an `n` count, and a metric is `null` when it has no data.
 
 Results JSON (`eval/results/<UTC timestamp>_<provider>_<model>.json`, also copied to
 `eval/results/latest.json`; the web page reads it):

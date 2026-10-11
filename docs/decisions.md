@@ -89,3 +89,21 @@ and a page in the app.
 **Consequences.** Retrieval and prompt changes are compared on numbers. The dataset's quality is
 explicit (`bozza` / `verificata` / `corretta`), and the results page shows users the system's
 measured limits.
+
+## 7. Versions take effect on the expression date, not the download date
+
+**Context.** The lifecycle of a Normattiva export lists the amending acts by *publication* date,
+and the downloader requests the text in force on each of those dates. Most amendments take effect
+later (a decree-law the next day, a law after a 15-day vacatio legis), so the export requested on
+a publication date often still shows the previous text, and the change appears only in the next
+export. Dating versions by file name would put changes in force weeks early or late (for example,
+L. 34/2026, published on 23 March 2026, applies from 7 April 2026).
+
+**Decision.** Each export's FRBRExpression date records when its consolidated text came into
+force. When that date falls after the previous file's date and before the file's own date, it is
+the version's `valid_from`; otherwise the file date is used. A version is credited to the latest
+amending act in the lifecycle of the export that introduced it.
+
+**Consequences.** Point-in-time answers follow Normattiva's own dating. When several acts take
+effect between two exports, all changes are credited to the latest act. Crediting individual commi
+would need Normattiva's per-article update notes.
