@@ -12,8 +12,11 @@ import re
 _MARKER_RE = re.compile(r"\(\(|\)\)")
 _SPACES_RE = re.compile(r"[ \t\r\f\v\u00a0]+")
 _WHITESPACE_RE = re.compile(r"\s+")
-# Characters ignored when comparing two renderings of the same text (see content_fingerprint).
-_LAYOUT_RE = re.compile(r"[\s.\-]+")
+# Characters ignored when comparing two renderings of the same text (see content_fingerprint):
+# whitespace, dots, hyphens, and quotes or apostrophes, straight (' ` ") or typographic
+# (U+2018, U+2019, guillemets, U+201C-U+201E).
+_LAYOUT_RE = re.compile("[\\s.\\-'`\"\u2018\u2019\u00ab\u00bb\u201c\u201d\u201e]+")
+_WORD_RE = re.compile(r"\w+")
 # Editorial notes appended by Normattiva after an article or annex ("------ AGGIORNAMENTO (9) ...").
 _NOTE_RE = re.compile(r"-{3,}\s*(?:\)\)\s*)?AGGIORNAMENTO\b.*\Z", re.DOTALL)
 _REPEAL_RE = re.compile(
@@ -54,11 +57,21 @@ def content_fingerprint(text: str | None) -> str:
     """Hash of the wording only, ignoring markers, whitespace, dots and hyphens.
 
     Normattiva exported the code as flat text until 2024 and as structured XML afterwards, so
-    the same comma can be rendered with different line breaks or label punctuation ("2-bis."
-    vs "2 bis."). Versioning compares fingerprints so that such layout changes do not count as
-    amendments.
+    the same comma can be rendered with different line breaks, label punctuation ("2-bis."
+    vs "2 bis.") or quotes. Versioning compares fingerprints so that such layout changes do not
+    count as amendments.
     """
     return text_hash(_LAYOUT_RE.sub("", strip_markers(text or "")))
+
+
+def word_fingerprint(text: str | None) -> str:
+    """Hash of the lower-cased words only, all punctuation ignored.
+
+    Two texts with different content fingerprints but the same words differ only in editorial
+    details (a comma, a semicolon, a capital letter), not in what they say.
+    """
+    words = _WORD_RE.findall(strip_markers(text or "").lower())
+    return text_hash(" ".join(words))
 
 
 def clean_heading(raw: str | None) -> str | None:

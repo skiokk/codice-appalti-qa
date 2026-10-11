@@ -31,7 +31,7 @@ def in_force(conn: psycopg.Connection, day: date) -> dict[str, tuple]:
 def test_load_corpus(db_conn: psycopg.Connection, fixture_corpus: VersionedCorpus) -> None:
     stats = load_corpus(fixture_corpus, db_conn)
     assert (stats.snapshots, stats.events, stats.units, stats.versions) == (
-        3,
+        2,  # the structured 20250401 fixture repeats the text of 20241231
         12,
         len(fixture_corpus.units),
         len(fixture_corpus.versions),
@@ -42,9 +42,16 @@ def test_load_corpus(db_conn: psycopg.Connection, fixture_corpus: VersionedCorpu
     snapshots = db_conn.execute(
         "SELECT vigenza_date, effective_date, source_file FROM snapshots ORDER BY vigenza_date"
     ).fetchall()
-    assert snapshots[-1] == (date(2025, 4, 1), date(2025, 4, 1), "23G00044_20250401.xml")
+    assert snapshots[-1] == (date(2024, 12, 31), date(2024, 12, 31), "23G00044_20241231.xml")
     kinds = dict(db_conn.execute("SELECT kind, count(*) FROM events GROUP BY kind").fetchall())
     assert kinds == {"original": 1, "amendment": 11}
+    change_kinds = dict(
+        db_conn.execute(
+            "SELECT change_kind, count(*) FILTER (WHERE changed_by_event IS NULL)"
+            " FROM unit_versions GROUP BY change_kind"
+        ).fetchall()
+    )
+    assert change_kinds == {"original": 25, "amendment": 0}  # 25 units in 20240302
 
 
 def test_point_in_time_queries(db_conn: psycopg.Connection, fixture_corpus) -> None:
@@ -67,7 +74,7 @@ def test_reload_is_idempotent(db_conn: psycopg.Connection, fixture_corpus) -> No
     assert stats.versions == len(first)
     for table in ("acts", "snapshots", "events"):
         count = db_conn.execute(f"SELECT count(*) FROM {table}").fetchone()[0]
-        assert count == {"acts": 1, "snapshots": 3, "events": 12}[table]
+        assert count == {"acts": 1, "snapshots": 2, "events": 12}[table]
 
 
 def test_reload_keeps_embeddings(db_conn: psycopg.Connection, fixture_corpus) -> None:

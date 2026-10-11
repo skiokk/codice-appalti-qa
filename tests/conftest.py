@@ -248,7 +248,8 @@ def seed_corpus(conn: psycopg.Connection) -> None:
         for valid_from, valid_to, text, amended in unit["versions"]:
             conn.execute(
                 "INSERT INTO unit_versions (unit_id, heading, text, text_hash, valid_from,"
-                " valid_to, changed_by_event) VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                " valid_to, changed_by_event, change_kind)"
+                " VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
                 (
                     unit_id,
                     unit["heading"],
@@ -257,6 +258,7 @@ def seed_corpus(conn: psycopg.Connection) -> None:
                     valid_from,
                     valid_to,
                     event_ids["amendment"] if amended else None,
+                    "amendment" if amended else "original",
                 ),
             )
     conn.commit()

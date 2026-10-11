@@ -49,7 +49,7 @@ def test_cli_ingest_loads_the_corpus(
 
     assert cli_ingest(argparse.Namespace(raw_dir=str(tmp_path))) == 0
     out = capsys.readouterr().out
-    assert "D.Lgs. 36/2023: 4 files, 3 distinct snapshots, 12 events" in out
+    assert "D.Lgs. 36/2023: 4 files, 2 distinct snapshots, 12 events" in out
     assert schema_calls == [True]
     units = db_conn.execute("SELECT count(*) FROM units").fetchone()[0]
     assert units == 36

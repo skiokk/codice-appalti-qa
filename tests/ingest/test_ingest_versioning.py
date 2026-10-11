@@ -1,3 +1,4 @@
+import logging
 from dataclasses import replace
 from datetime import date
 from itertools import pairwise
@@ -70,19 +71,26 @@ D1, D2, D3, D4 = date(2024, 1, 10), date(2024, 3, 1), date(2024, 6, 1), date(202
 
 
 @pytest.mark.parametrize(
-    ("expression", "previous", "expected"),
+    ("expression", "previous", "logged"),
     [
-        (None, D1, D3),
-        (D3, D1, D3),  # expression equal to vigenza
-        (D2, D1, D2),  # strictly between: the change applies from the expression date
-        (D1, D1, D3),  # not after the previous vigenza
-        (date(2023, 12, 1), D1, D3),
-        (D2, None, D2),  # first snapshot
-        (date(2024, 7, 1), D1, D3),  # after the vigenza
+        (None, D1, None),
+        (D3, D1, None),  # expression equal to the file date
+        (D2, D1, "may apply earlier"),  # between: the file was not refined
+        (D2, None, "may apply earlier"),
+        (D1, D1, "stale expression date"),  # not after the previous snapshot
+        (date(2023, 12, 1), D1, "stale expression date"),
+        (date(2024, 7, 1), D1, "after the file date"),
     ],
 )
-def test_effective_date(expression: date | None, previous: date | None, expected: date) -> None:
-    assert effective_date(snapshot(D3, [], expression=expression), previous) == expected
+def test_effective_date_is_the_file_date(
+    expression: date | None, previous: date | None, logged: str | None, caplog
+) -> None:
+    with caplog.at_level(logging.INFO, logger="appalti_qa.ingest.versioning"):
+        assert effective_date(snapshot(D3, [], expression=expression), previous) == D3
+    if logged is None:
+        assert caplog.records == []
+    else:
+        assert logged in caplog.text
 
 
 def test_changes_open_and_close_versions() -> None:
@@ -112,11 +120,39 @@ def test_layout_changes_do_not_create_versions() -> None:
     assert corpus.versions[0].text_hash == text_hash(structured.text)
 
 
-def test_heading_change_creates_a_version() -> None:
+def test_heading_change_alone_updates_the_heading() -> None:
     before = comma("1/1", "1. Testo.", heading="Vecchia rubrica")
     after = comma("1/1", "1. Testo.", heading="Nuova rubrica")
     corpus = build_versions([snapshot(D1, [before]), snapshot(D2, [after])])
-    assert [v.heading for v in corpus.versions] == ["Vecchia rubrica", "Nuova rubrica"]
+    assert versions_of(corpus, "1/1") == [(D1, None, None, False)]
+    assert corpus.versions[0].heading == "Nuova rubrica"
+    assert [s.vigenza_date for s, _ in corpus.snapshots] == [D1, D2]  # still a distinct text
+
+
+def test_quotes_and_accents_are_layout() -> None:
+    before = comma("1/1", "1. L'art. «uno» e` vigente.")
+    after = comma("1/1", '1. L\u2019art. "uno" e\' vigente.')
+    corpus = build_versions([snapshot(D1, [before]), snapshot(D2, [after])])
+    assert versions_of(corpus, "1/1") == [(D1, None, None, False)]
+
+
+def test_punctuation_only_changes_are_editorial() -> None:
+    before = comma("1/1", "1. Le stazioni appaltanti, ove possibile, provvedono")
+    after = comma("1/1", "1. Le stazioni appaltanti ove possibile provvedono;")
+    amended = comma("1/1", "1. Le stazioni appaltanti provvedono;")
+    corpus = build_versions(
+        [
+            snapshot(D1, [before]),
+            snapshot(D2, [after], events=[ORIGINAL, amendment(date(2024, 2, 1), 4)]),
+            snapshot(D3, [amended], events=[ORIGINAL, amendment(D3, 6)]),
+        ]
+    )
+    assert [(v.valid_from, v.change_kind) for v in corpus.versions] == [
+        (D1, "original"),
+        (D2, "editorial"),
+        (D3, "amendment"),
+    ]
+    assert [v[2] for v in versions_of(corpus, "1/1")] == [None, None, "D.L. n. 6"]
 
 
 def test_missing_units_are_closed_and_may_reappear() -> None:
@@ -131,21 +167,115 @@ def test_missing_units_are_closed_and_may_reappear() -> None:
     assert [(v[0], v[1]) for v in versions_of(corpus, "1/2")] == [(D1, D2), (D3, None)]
 
 
-def test_identical_files_are_skipped_and_bound_the_expression_date() -> None:
-    units = [comma("1/1", "1. Uno.")]
-    original = snapshot(D1, units, sha256="a" * 64)
-    duplicate = snapshot(D2, units, sha256="a" * 64)
-    # The text changed after D2 (the duplicate still had the old one), so an expression date
-    # before D2 cannot be the effective date.
-    changed = snapshot(D3, [comma("1/1", "1. Due.")], expression=date(2024, 2, 1))
-    corpus = build_versions([changed, duplicate, original])
+def test_commi_split_differently_are_editorial() -> None:
+    """Art. 62 in the flat exports: the first sentence of comma 15 ends up in comma 14."""
+    flat = [
+        comma(
+            "62/14", "14. Le stazioni operano insieme. 15. Se la procedura e' congiunta in parte"
+        ),
+        comma("62/15", "rispondono per quella parte. Le stazioni scelgono il risultato."),
+    ]
+    structured = [
+        comma("62/14", "14. Le stazioni operano insieme."),
+        comma(
+            "62/15",
+            "15. Se la procedura e' congiunta in parte rispondono per quella parte.\n"
+            "Le stazioni scelgono il risultato.",
+        ),
+        comma("62/16", "16. Comma nuovo."),
+    ]
+    amended = [*structured[:2], comma("62/16", "16. Comma nuovo e modificato.")]
+    corpus = build_versions(
+        [
+            snapshot(D1, flat),
+            snapshot(D2, structured[:2], events=[ORIGINAL, amendment(D2, 25)]),
+            snapshot(D3, structured, events=[ORIGINAL, amendment(D2, 25)]),
+            snapshot(D4, amended, events=[ORIGINAL, amendment(D4, 40)]),
+        ]
+    )
+    kinds = [(v.unit_key, v.valid_from, v.change_kind) for v in corpus.versions]
+    assert kinds == [
+        ("62/14", D1, "original"),
+        ("62/14", D2, "editorial"),
+        ("62/15", D1, "original"),
+        ("62/15", D2, "editorial"),
+        ("62/16", D3, "amendment"),  # new words: a real insertion
+        ("62/16", D4, "amendment"),
+    ]
+    assert [v.changed_by is None for v in corpus.versions] == [True] * 4 + [False] * 2
+
+
+def test_files_with_the_same_text_are_skipped() -> None:
+    """Exports that differ only in metadata or layout add no snapshot and no version."""
+    original = snapshot(D1, [comma("1/1", "1. Uno: a) x; b) y.")], sha256="a" * 64)
+    restamped = snapshot(
+        D2,
+        [comma("1/1", "1. Uno:\na) x;\nb) y.")],
+        sha256="b" * 64,
+        events=[ORIGINAL, amendment(date(2024, 2, 1), 2)],
+    )
+    changed = snapshot(D3, [comma("1/1", "1. Due.")], events=[ORIGINAL, amendment(D3, 3)])
+    corpus = build_versions([changed, restamped, original])
     assert [(s.vigenza_date, effective) for s, effective in corpus.snapshots] == [
         (D1, D1),
         (D3, D3),
     ]
-    later = snapshot(D4, [comma("1/1", "1. Tre.")], expression=date(2024, 8, 1))
-    corpus = build_versions([original, duplicate, later])
-    assert corpus.snapshots[-1][1] == date(2024, 8, 1)
+    assert versions_of(corpus, "1/1") == [(D1, D3, None, False), (D3, None, "D.L. n. 3", False)]
+    assert corpus.versions[0].text == "1. Uno:\na) x;\nb) y."  # latest rendering kept
+    assert len(corpus.events) == 3  # events of skipped files are kept
+
+
+def test_distinct_exports_sharing_an_expression_date(caplog) -> None:
+    """Normattiva left 2023-07-06 as the expression date of both 20230919 and 20230929."""
+    stale = date(2023, 7, 6)
+    l87 = amendment(date(2023, 7, 5), 87)
+    dl124, dl132 = amendment(date(2023, 9, 19), 124), amendment(date(2023, 9, 29), 132)
+    first = snapshot(
+        date(2023, 7, 6),
+        [comma("1/1", "1. Uno."), comma("1/2", "2. Due.")],
+        expression=stale,
+        events=[ORIGINAL, l87],
+    )
+    second = snapshot(
+        date(2023, 9, 20),
+        [comma("1/1", "1. Uno modificato."), comma("1/2", "2. Due.")],
+        expression=stale,
+        events=[ORIGINAL, l87, dl124],
+    )
+    third = snapshot(
+        date(2023, 9, 30),
+        [comma("1/1", "1. Uno modificato."), comma("1/2", "2. Due modificato.")],
+        expression=stale,
+        events=[ORIGINAL, l87, dl124, dl132],
+    )
+    with caplog.at_level(logging.INFO, logger="appalti_qa.ingest.versioning"):
+        corpus = build_versions([first, second, third])
+    assert [effective for _, effective in corpus.snapshots] == [
+        date(2023, 7, 6),
+        date(2023, 9, 20),
+        date(2023, 9, 30),
+    ]
+    assert versions_of(corpus, "1/1")[-1] == (date(2023, 9, 20), None, "D.L. n. 124", False)
+    assert versions_of(corpus, "1/2")[-1] == (date(2023, 9, 30), None, "D.L. n. 132", False)
+    assert caplog.text.count("stale expression date 2023-07-06") == 2
+
+
+def test_changed_by_is_the_latest_act_on_or_before_valid_from(caplog) -> None:
+    published, effective = date(2026, 3, 23), date(2026, 4, 7)  # L. 34/2026, vacatio legis
+    law = amendment(published, 34)
+    corpus = build_versions(
+        [
+            snapshot(D1, [comma("1/1", "1. Uno.")]),
+            snapshot(effective, [comma("1/1", "1. Due.")], events=[ORIGINAL, law]),
+        ]
+    )
+    assert versions_of(corpus, "1/1")[-1] == (effective, None, "D.L. n. 34", False)
+
+    later = snapshot(date(2026, 5, 1), [comma("1/1", "1. Tre.")], events=[ORIGINAL, law])
+    with caplog.at_level(logging.WARNING, logger="appalti_qa.ingest.versioning"):
+        corpus = build_versions([*(s for s, _ in corpus.snapshots), later])
+    assert versions_of(corpus, "1/1")[-1][2] == "D.L. n. 34"
+    assert "no amending act published between 2026-04-07 and 2026-05-01" in caplog.text
 
 
 def test_changed_by_uses_the_lifecycle_of_the_introducing_snapshot() -> None:
@@ -197,10 +327,10 @@ def test_empty_input() -> None:
 
 def test_fixture_corpus(fixture_corpus: VersionedCorpus) -> None:
     effective = [(s.vigenza_date, day) for s, day in fixture_corpus.snapshots]
+    # The structured 20250401 export says what the flat 20241231 one says: not a new snapshot.
     assert effective == [
         (date(2024, 3, 2), date(2024, 3, 2)),
         (date(2024, 12, 31), date(2024, 12, 31)),
-        (date(2025, 4, 1), date(2025, 4, 1)),
     ]
     correttivo = "D.Lgs. 31 dicembre 2024, n. 209"
     # Unchanged across the flat -> structured switch of 2025: one version.
@@ -219,6 +349,12 @@ def test_fixture_corpus(fixture_corpus: VersionedCorpus) -> None:
     assert len(versions_of(fixture_corpus, "all:I.3/p1")) == 2
     assert len(fixture_corpus.events) == 12
     assert fixture_corpus.act.short_title == "D.Lgs. 36/2023"
+    kinds = {v.change_kind for v in fixture_corpus.versions}
+    assert kinds == {"original", "amendment"}
+    assert all(
+        (v.change_kind == "amendment") == (v.changed_by is not None)
+        for v in fixture_corpus.versions
+    )
 
 
 def test_fixture_versions_do_not_overlap(fixture_corpus: VersionedCorpus) -> None:

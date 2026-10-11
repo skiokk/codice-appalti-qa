@@ -82,7 +82,7 @@ _AMENDMENTS_SQL = """
 _HISTORY_SQL = f"""
     SELECT v.id, u.key AS unit_key, u.kind, u.article, u.comma, u.allegato,
         coalesce(v.heading, u.heading) AS heading, v.text, v.text_hash, v.valid_from,
-        v.valid_to, v.repealed, e.id AS event_id, e.event_date, e.kind AS event_kind,
+        v.valid_to, v.change_kind, v.repealed, e.id AS event_id, e.event_date, e.kind AS event_kind,
         e.amending_urn, e.amending_label
     {_FROM} LEFT JOIN events e ON e.id = v.changed_by_event
     WHERE {_MATCHES_REFS}
@@ -298,5 +298,6 @@ def _unit_version(row: dict) -> UnitVersion:
         valid_from=row["valid_from"],
         valid_to=row["valid_to"],
         changed_by=event,
+        change_kind=row["change_kind"],
         repealed=row["repealed"],
     )

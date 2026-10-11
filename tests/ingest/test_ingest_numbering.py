@@ -116,3 +116,29 @@ def test_layout_lettere_ignores_quotes_and_lone_letters() -> None:
     assert layout_lettere("1. Si veda la lettera b) del comma 2.") == (
         "1. Si veda la lettera b) del comma 2."
     )
+
+
+def test_trailing_run_renumbered_from_one_continues_the_article() -> None:
+    """Art. 34 in the flat exports: commi 5 and 6 are numbered "1." and "2."."""
+    text = (
+        "1. Le stazioni appaltanti possono chiedere un catalogo elettronico. "
+        "2. I cataloghi sono predisposti dagli offerenti. 3. Quando i cataloghi sono accettati "
+        "lo indicano nel bando. 4. Quando un accordo quadro e' concluso: a) invitano gli "
+        "offerenti; b) comunicano agli offerenti. 1. In caso di riapertura del confronto, "
+        "indicano la data della raccolta. 2. Possono aggiudicare appalti basati su un sistema "
+        "dinamico di acquisizione."
+    )
+    assert labels(text) == ["1", "2", "3", "4"]  # the default keeps them inside comma 4
+    _, segments = split_numbered(text, renumber_tail=True)
+    assert [s.label for s in segments] == ["1", "2", "3", "4", "5", "6"]
+    assert segments[4].body.strip().startswith("In caso di riapertura")
+    assert segments[3].body.strip().endswith("b) comunicano agli offerenti.")
+
+
+def test_trailing_run_needs_two_labels_and_no_gaps() -> None:
+    lone = "1. Uno. 2. Due. 1. Ripete."
+    assert labels(lone) == ["1", "2"]
+    gapped = "1. Uno. 2. Due. 1. Ripete. 3. Salta."
+    _, segments = split_numbered(gapped, renumber_tail=True)
+    assert [s.label for s in segments] == ["1", "2", "3"]
+    assert "1. Ripete." in segments[1].body

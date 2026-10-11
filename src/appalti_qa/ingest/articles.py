@@ -9,6 +9,12 @@ Normattiva exports articles in two shapes:
   only says "Articolo" and a ``<num>`` holding the article number.
 
 Both produce the same keys and, for unchanged commi, the same wording.
+
+Per-article override: the flat exports number the last two commi of art. 34 "1." and "2."
+while the structured exports number them 5 and 6, so the flat text of art. 34 is split with
+``renumber_tail``. Arts. 205 and 207 have a similar run ("1.", "2." after comma 5, "1." after
+comma 1) left inside a comma in *both* shapes; they are kept as exported so that their keys do
+not change with the format switch.
 """
 
 from __future__ import annotations
@@ -33,6 +39,7 @@ from appalti_qa.keys import (
 logger = logging.getLogger(__name__)
 
 _SUFFIXES = "|".join(sorted(LATIN_SUFFIXES, key=len, reverse=True))
+_RENUMBER_TAIL = frozenset({"34"})  # see the module docstring
 _ARTICLE_PREFIX_RE = re.compile(rf"^Articolo\s+(?P<n>\d+(?:[\s-]*(?:{_SUFFIXES}))?)\b\s*\.?\s*")
 
 
@@ -122,7 +129,7 @@ def _lettera_label(point: etree._Element) -> str:
 def _flat(article: str, heading: str | None, paragraphs: list[etree._Element]) -> list[ParsedUnit]:
     raw = " ".join(collapse_whitespace(inline_text(p)) for p in paragraphs)
     raw = _strip_article_prefix(cut_notes(collapse_whitespace(raw)), article)
-    preamble, segments = split_numbered(raw)
+    preamble, segments = split_numbered(raw, renumber_tail=article in _RENUMBER_TAIL)
     if not segments:
         if not raw:
             logger.warning("art. %s has no text", article)

@@ -3,9 +3,11 @@ from datetime import date
 from pathlib import Path
 
 import pytest
+from lxml import etree
 
 from appalti_qa.ingest import ParsedSnapshot, parse_snapshot
 from appalti_qa.ingest.annexes import doc_identity, slugify
+from appalti_qa.ingest.articles import article_units
 from appalti_qa.ingest.text import content_fingerprint
 from appalti_qa.keys import is_valid_key
 
@@ -194,3 +196,23 @@ def test_invalid_files(tmp_path: Path) -> None:
     badly_named.write_bytes((Path(__file__).parent / "fixtures/23G00044_20250401.xml").read_bytes())
     with pytest.raises(ValueError, match="file name"):
         parse_snapshot(badly_named)
+
+
+FLAT_ARTICLE = """
+<article xmlns="http://docs.oasis-open.org/legaldocml/ns/akn/3.0" eId="art_{n}">
+  <num>Art. {n}</num>
+  <heading>Cataloghi elettronici</heading>
+  <paragraph><content><p>1. Le stazioni appaltanti possono chiedere un catalogo elettronico.
+  2. I cataloghi sono predisposti dagli offerenti per la partecipazione alla procedura.
+  1. In caso di riapertura del confronto competitivo indicano la data della raccolta.
+  2. Possono aggiudicare appalti basati su un sistema dinamico di acquisizione.</p></content>
+  </paragraph>
+</article>
+"""
+
+
+@pytest.mark.parametrize(("number", "keys"), [("34", 4), ("205", 2)])
+def test_trailing_run_override_is_per_article(number: str, keys: int) -> None:
+    """Only art. 34 renumbers its final "1.", "2." (the structured exports number them on)."""
+    units = article_units(etree.fromstring(FLAT_ARTICLE.format(n=number)))
+    assert [unit.comma for unit in units] == ["1", "2", "3", "4"][:keys]

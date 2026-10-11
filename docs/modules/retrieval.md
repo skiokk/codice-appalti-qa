@@ -15,6 +15,8 @@ answer a question, and looks units up by reference.
 
 Every query filters `valid_from <= D AND (valid_to IS NULL OR valid_to > D)`. Searches skip
 repealed versions; `lookup` and `history` return them, since "abrogato" is itself an answer.
+`history` fills `change_kind` on each version; `Hit.modified_by` lists only amending acts, so
+editorial versions (no act) never appear there.
 
 ## Modes
 

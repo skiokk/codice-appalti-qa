@@ -54,6 +54,7 @@ def test_history_lists_every_version_with_its_amendment(seeded_conn: psycopg.Con
     )
     assert (original.valid_from, original.valid_to) == (date(2023, 4, 1), date(2024, 12, 31))
     assert original.changed_by is None
+    assert (original.change_kind, amended.change_kind) == ("original", "amendment")
     assert amended.valid_to is None and amended.in_force_at(AFTER)
     assert amended.changed_by is not None
     assert (amended.changed_by.label, amended.changed_by.date) == (
@@ -69,6 +70,19 @@ def test_history_lists_every_version_with_its_amendment(seeded_conn: psycopg.Con
         "Termini delle procedure di appalto e di concessione",
     )
     assert history("nonsense", conn=seeded_conn) == []
+
+
+def test_history_and_hits_skip_editorial_versions(seeded_conn: psycopg.Connection) -> None:
+    seeded_conn.execute(
+        "UPDATE unit_versions SET change_kind = 'editorial', changed_by_event = NULL"
+        " WHERE valid_from = %s AND unit_id = (SELECT id FROM units WHERE key = '50/1')",
+        (date(2024, 12, 31),),
+    )
+    seeded_conn.commit()
+    _, editorial = history("50/1", conn=seeded_conn)
+    assert (editorial.change_kind, editorial.changed_by) == ("editorial", None)
+    (hit,) = lookup(["50/1"], AFTER, conn=seeded_conn)
+    assert hit.modified_by == []
 
 
 def test_available_range(seeded_conn: psycopg.Connection) -> None:

@@ -194,7 +194,17 @@ def test_norma_page(client: TestClient, backend, hit_factory) -> None:
             text="1. Testo originario.",
             text_hash="a" * 64,
             valid_from=date(2023, 4, 1),
+            valid_to=date(2024, 3, 2),
+            change_kind="original",
+        ),
+        UnitVersion(
+            unit_key="50/1",
+            kind="comma",
+            text="1. Testo originario, con una virgola.",
+            text_hash="c" * 64,
+            valid_from=date(2024, 3, 2),
             valid_to=date(2024, 12, 31),
+            change_kind="editorial",
         ),
         UnitVersion(
             unit_key="50/1",
@@ -211,11 +221,14 @@ def test_norma_page(client: TestClient, backend, hit_factory) -> None:
     page = parse(response.text)
     assert page.findtext(".//h1") == "Art. 50, comma 1"
     rows = page.xpath("//table/tbody/tr")
-    assert len(rows) == 2
+    assert len(rows) == 3
+    acts = [row.xpath("./td[2]")[0].text_content().strip() for row in rows]
     assert "In vigore dal 31/12/2024" in rows[0].text_content()
-    assert "D.Lgs. 31 dicembre 2024, n. 209" in rows[0].text_content()
-    assert "In vigore dal 01/04/2023 al 30/12/2024" in rows[1].text_content()
-    assert "Testo originario" in rows[1].text_content()
+    assert acts[0] == "D.Lgs. 31 dicembre 2024, n. 209"
+    assert "In vigore dal 02/03/2024 al 30/12/2024" in rows[1].text_content()
+    assert acts[1].startswith("Modifica redazionale")
+    assert "In vigore dal 01/04/2023 al 01/03/2024" in rows[2].text_content()
+    assert acts[2] == "Testo originario"
 
 
 def test_norma_errors(client: TestClient, backend) -> None:

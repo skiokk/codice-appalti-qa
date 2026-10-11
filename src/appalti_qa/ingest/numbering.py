@@ -11,10 +11,13 @@ found inside running text. A label opens a new unit only when
 
 References inside the text ("ai sensi del comma 2.", "lettere c), d) ed e)") fail one of the two
 checks and stay part of the running text, and so does anything quoted between « and » (amending
-provisions quote whole articles of other acts). Two defects of the flat exports are repaired:
+provisions quote whole articles of other acts). Three defects of the flat exports are repaired:
 
 * a comma misnumbered "1." after a full stop is accepted under the expected number when the
   next label carries on from it ("7. ... 1. ... 9." reads as 7, 8, 9);
+* with ``renumber_tail=True``, the last commi of an article numbered from "1." again
+  ("4. ... 1. ... 2." at the end of art. 34) continue the article's numbering when they run
+  without gaps to the end of the text ("1.", "2." read as 5, 6);
 * an article replaced as a whole is exported as the old text followed by the new one, both
   numbered from "1."; a second "1." followed by "2." whose opening words match the first comma
   starts over, so only the last (current) copy is kept.
@@ -123,11 +126,21 @@ def _starts_copy(text: str, first: _Label, label: _Label, following: _Label | No
     return similarity >= _COPY_MIN_SIMILARITY
 
 
-def split_numbered(text: str, *, restart: bool = False) -> tuple[str, list[Segment]]:
+def _is_trailing_run(labels: list[_Label]) -> bool:
+    """True for "1.", "2.", ... (at least two) that are the last labels of the text."""
+    return len(labels) >= 2 and all(
+        label.value == (number, 0) for number, label in enumerate(labels, start=1)
+    )
+
+
+def split_numbered(
+    text: str, *, restart: bool = False, renumber_tail: bool = False
+) -> tuple[str, list[Segment]]:
     """Split flat text at its numbered labels; returns (text before "1.", segments).
 
     With ``restart=True`` every "1." after a punctuation mark starts a new list (annexes that
-    number their parts from 1 again); otherwise the numbering must run on.
+    number their parts from 1 again); otherwise the numbering must run on. ``renumber_tail``
+    enables the repair of a final run of commi numbered from "1." again (see above).
     """
     quoted = _quoted(text)
     labels = [
@@ -151,6 +164,10 @@ def split_numbered(text: str, *, restart: bool = False) -> tuple[str, list[Segme
             accepted = [(label, (1, 0))]
         elif following is not None and _continues((previous[0] + 1, 0), following.value):
             accepted.append((label, (previous[0] + 1, 0)))
+        elif renumber_tail and _is_trailing_run(strong[index:]):
+            run = strong[index:]
+            accepted.extend((item, (previous[0] + offset, 0)) for offset, item in enumerate(run, 1))
+            break
     segments = []
     for index, (label, value) in enumerate(accepted):
         end = accepted[index + 1][0].match.start() if index + 1 < len(accepted) else len(text)

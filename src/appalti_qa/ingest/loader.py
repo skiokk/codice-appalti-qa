@@ -90,7 +90,8 @@ def load_corpus(corpus: VersionedCorpus, conn: psycopg.Connection) -> LoadStats:
 
         cur.executemany(
             "INSERT INTO unit_versions (unit_id, heading, text, text_hash, valid_from, valid_to,"
-            " changed_by_event, repealed) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
+            " changed_by_event, change_kind, repealed)"
+            " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
             [
                 (
                     unit_ids[v.unit_key],
@@ -102,6 +103,7 @@ def load_corpus(corpus: VersionedCorpus, conn: psycopg.Connection) -> LoadStats:
                     event_ids[(v.changed_by.amending_urn, v.changed_by.date)]
                     if v.changed_by
                     else None,
+                    v.change_kind,
                     v.repealed,
                 )
                 for v in corpus.versions

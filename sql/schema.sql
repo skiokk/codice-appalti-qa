@@ -61,7 +61,10 @@ CREATE TABLE IF NOT EXISTS unit_versions (
     text_hash        char(64) NOT NULL,            -- sha256 hex of text (UTF-8)
     valid_from       date NOT NULL,
     valid_to         date,                         -- exclusive; NULL = still in force
-    changed_by_event integer REFERENCES events (id) ON DELETE SET NULL,  -- NULL for the original text
+    changed_by_event integer REFERENCES events (id) ON DELETE SET NULL,  -- NULL unless change_kind = 'amendment'
+    change_kind      text NOT NULL DEFAULT 'amendment'
+                     CHECK (change_kind IN ('original', 'amendment', 'editorial')),
+                     -- 'editorial': only punctuation/capitalisation differ from the previous version
     repealed         boolean NOT NULL DEFAULT false,
     tsv              tsvector GENERATED ALWAYS AS (
                          setweight(to_tsvector('italian'::regconfig, coalesce(heading, '')), 'A')
@@ -72,6 +75,9 @@ CREATE TABLE IF NOT EXISTS unit_versions (
     CHECK (valid_to IS NULL OR valid_to > valid_from),
     EXCLUDE USING gist (unit_id WITH =, daterange(valid_from, valid_to, '[)') WITH &&)
 );
+-- Databases created before change_kind existed get the column here (existing rows: 'amendment').
+ALTER TABLE unit_versions ADD COLUMN IF NOT EXISTS change_kind text NOT NULL DEFAULT 'amendment'
+    CHECK (change_kind IN ('original', 'amendment', 'editorial'));
 CREATE INDEX IF NOT EXISTS unit_versions_unit_idx ON unit_versions (unit_id, valid_from);
 CREATE INDEX IF NOT EXISTS unit_versions_hash_idx ON unit_versions (text_hash);
 CREATE INDEX IF NOT EXISTS unit_versions_tsv_idx ON unit_versions USING gin (tsv);

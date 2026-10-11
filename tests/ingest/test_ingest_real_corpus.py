@@ -44,9 +44,16 @@ def test_versions_are_consistent(real_corpus: VersionedCorpus) -> None:
         for earlier, later in pairwise(versions):
             assert earlier.valid_to is not None and earlier.valid_to <= later.valid_from
     first_effective = real_corpus.snapshots[0][1]
-    assert all(
-        (v.changed_by is None) == (v.valid_from == first_effective) for v in real_corpus.versions
-    )
+    for version in real_corpus.versions:
+        assert (version.change_kind == "original") == (version.valid_from == first_effective)
+        assert (version.changed_by is None) == (version.change_kind != "amendment")
+
+
+def test_art_34_has_six_commi_throughout(real_corpus: VersionedCorpus) -> None:
+    """The flat exports number commi 5 and 6 of art. 34 "1." and "2." (per-article repair)."""
+    for snapshot, _ in real_corpus.snapshots:
+        keys = [u.key for u in snapshot.units if u.article == "34" and u.allegato is None]
+        assert keys == [f"34/{n}" for n in range(1, 7)], snapshot.source_file
 
 
 def test_export_format_switch_is_not_an_amendment(real_corpus: VersionedCorpus) -> None:

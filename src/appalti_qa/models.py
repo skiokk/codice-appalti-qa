@@ -10,6 +10,9 @@ from pydantic import BaseModel, Field
 from appalti_qa.keys import key_label
 
 UnitKind = Literal["article", "comma", "allegato_block"]
+# original: first snapshot; amendment: the words changed; editorial: only punctuation,
+# capitalisation or the split into commi changed (no amending act is credited).
+ChangeKind = Literal["original", "amendment", "editorial"]
 
 
 class Event(BaseModel):
@@ -37,6 +40,7 @@ class UnitVersion(BaseModel):
     valid_from: date
     valid_to: date | None = None
     changed_by: Event | None = None
+    change_kind: ChangeKind = "amendment"
     repealed: bool = False
 
     def in_force_at(self, day: date) -> bool:

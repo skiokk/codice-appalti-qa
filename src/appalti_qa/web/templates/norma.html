@@ -54,7 +54,12 @@
           {% for version in unit.versions %}
           <tr>
             <td>{{ validity(version.valid_from, version.valid_to) }}</td>
-            <td>{{ version.changed_by.label if version.changed_by else "Testo originario" }}</td>
+            <td>
+              {%- if version.changed_by %}{{ version.changed_by.label }}
+              {%- elif version.change_kind == "editorial" %}Modifica redazionale (punteggiatura o suddivisione in commi, nessun atto modificativo)
+              {%- elif version.change_kind == "original" %}Testo originario
+              {%- else %}Atto modificativo non individuato{% endif -%}
+            </td>
             <td>
               {% if version.repealed %}Abrogato{% endif %}
               {% if version.in_force_at(day) %}In vigore al {{ day|data }}{% endif %}
