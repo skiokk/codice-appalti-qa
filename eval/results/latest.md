@@ -1,6 +1,6 @@
-# Evaluation report `20261011T175038Z_retrieval`
+# Evaluation report `20261011T182950Z_retrieval`
 
-Created 2026-10-11T17:50:38Z. Dataset `eval/dataset.yaml`: 81 questions evaluated (selection: all); 0 of 81 questions in the file are verified.
+Created 2026-10-11T18:29:50Z. Dataset `eval/dataset.yaml`: 81 questions evaluated (selection: all); 0 of 81 questions in the file are verified.
 
 > **Draft questions included.** 81 of the evaluated questions are not verified yet (status `bozza`): the numbers are indicative and not for publication.
 
@@ -12,6 +12,12 @@ Created 2026-10-11T17:50:38Z. Dataset `eval/dataset.yaml`: 81 questions evaluate
 | modes | ['lexical', 'semantic', 'hybrid'] |
 | k_values | [1, 3, 5, 10] |
 | embedding_model | intfloat/multilingual-e5-base |
+| split | all |
+| semantic_granularity | unit |
+| hubness_weight | 0.0 |
+| lexical_weight | 1.0 |
+| fusion_depth | 4 |
+| rrf_k | 60 |
 
 ## Retrieval
 
