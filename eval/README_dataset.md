@@ -38,7 +38,7 @@ is legally correct, so a person still has to review each one.
 | `question` | the question, in Italian |
 | `kind` | `answerable`, `temporal`, `unanswerable` or `multi` |
 | `category` | topic tag (`affidamento_diretto`, `soglie`, `procedure`, `rup`, `garanzie`, `subappalto`, `esecuzione`, `digitalizzazione`, `principi`, `concessioni`, `contenzioso`, ...) |
-| `vigenza` | ISO date; the answer refers to the text in force on that date. A snapshot's changes apply from its effective date (the Normattiva expression date, e.g. 2026-04-07 for the 2026-08-11 export), not from the file name |
+| `vigenza` | ISO date; the answer refers to the text in force on that date. A change applies from the first day Normattiva serves the new text (the date of its boundary snapshot after `appalti-qa download --refine`, decision 7 in `docs/decisions.md`); a temporal question dated just before a change must fall on the earlier version |
 | `expected_answer` | 1-3 sentences in Italian |
 | `expected_refs` | canonical unit keys (`50/1/b`, `60/2`, `all:I.3/p1`, `all:II.1/2/2`); a lettera ref matches its comma unit by prefix; `[]` for unanswerable |
 | `source_excerpt` | verbatim excerpt (at most 300 characters) of the referenced text, to make the reviewer's job faster |

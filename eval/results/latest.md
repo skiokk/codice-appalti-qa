@@ -1,6 +1,6 @@
-# Evaluation report `20261011T161819Z_retrieval`
+# Evaluation report `20261011T165405Z_retrieval`
 
-Created 2026-10-11T16:18:19Z. Dataset `eval/dataset.yaml`: 81 questions evaluated (selection: all); 0 of 81 questions in the file are verified.
+Created 2026-10-11T16:54:05Z. Dataset `eval/dataset.yaml`: 81 questions evaluated (selection: all); 0 of 81 questions in the file are verified.
 
 > **Draft questions included.** 81 of the evaluated questions are not verified yet (status `bozza`): the numbers are indicative and not for publication.
 

@@ -8,3 +8,5 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 *.egg-info
+# Workbooks exported for the expert review (appalti-qa eval export-xlsx)
+/eval/review/
