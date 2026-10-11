@@ -13,8 +13,11 @@ from appalti_qa.ingest.download import (
     SESSION_URL,
     USER_AGENT,
     DownloadError,
+    NormattivaFetcher,
     vigenza_dates,
 )
+from appalti_qa.ingest.manifest import Manifest, write_manifest
+from appalti_qa.ingest.refine import RefineReport
 
 TODAY = date(2025, 4, 10)
 HTML_ERROR = b"<!DOCTYPE html><html><body>Sessione scaduta</body></html>"
@@ -152,3 +155,77 @@ def test_requests_are_spaced(monkeypatch, tmp_path: Path, export: bytes) -> None
     download_snapshots(tmp_path, delay_s=2.0, client=site.client(), today=TODAY)
     assert len(pauses) == len(site.requests) - 1
     assert all(0 < pause <= 2.0 for pause in pauses)
+
+
+def test_refined_dates_are_not_downloaded_again(tmp_path: Path, export: bytes) -> None:
+    (tmp_path / "23G00044_20250315.xml").write_bytes(export)  # the only boundary kept
+    write_manifest(tmp_path, Manifest(TODAY, [date(2025, 3, 15)]))
+    site = FakeNormattiva(export)
+    paths = download_snapshots(tmp_path, delay_s=0, client=site.client(), today=TODAY)
+    assert site.requests == []
+    assert [p.name for p in paths] == ["23G00044_20250315.xml"]
+
+    later = date(2025, 5, 1)
+    paths = download_snapshots(tmp_path, delay_s=0, client=site.client(), today=later)
+    assert site.akn_dates == ["20250501"]  # lifecycle dates up to TODAY are known
+    assert [p.name for p in paths] == ["23G00044_20250315.xml", "23G00044_20250501.xml"]
+
+
+def test_fetcher_opens_the_session_first(tmp_path: Path, export: bytes) -> None:
+    site = FakeNormattiva(export)
+    with NormattivaFetcher(delay_s=0, client=site.client()) as fetch:
+        path = fetch(date(2025, 3, 20), tmp_path / "23G00044_20250320.xml")
+        fetch(date(2025, 3, 21), tmp_path / "23G00044_20250321.xml")
+    assert path.read_bytes() == export
+    assert str(site.requests[0].url) == str(httpx.URL(SESSION_URL))
+    assert site.akn_dates == ["20250320", "20250321"]  # one session for both
+    with (
+        NormattivaFetcher(
+            delay_s=0, client=FakeNormattiva(export, html_always=True).client()
+        ) as fetch,
+        pytest.raises(DownloadError, match="HTML page"),
+    ):
+        fetch(date(2025, 3, 20), tmp_path / "23G00044_20250322.xml")
+
+
+def test_cli_download_with_refine(monkeypatch, tmp_path: Path, capsys) -> None:
+    args = argparse.Namespace(
+        raw_dir=str(tmp_path), delay=0.5, force=False, refine=True, max_probes=7
+    )
+    calls = []
+
+    def fake_refine(raw_dir: Path, fetch, *, max_probes: int) -> RefineReport:
+        calls.append((raw_dir, type(fetch).__name__, max_probes))
+        (raw_dir / "23G00044_20250315.xml").write_text("<x/>")
+        return RefineReport(
+            boundaries=[date(2025, 3, 15)],
+            probes=4,
+            unresolved=[(date(2025, 1, 1), date(2025, 2, 1))],
+            deleted=["23G00044_20250401.xml"],
+        )
+
+    monkeypatch.setattr(ingest_commands, "download_snapshots", lambda *a, **k: [])
+    monkeypatch.setattr(ingest_commands, "refine_snapshots", fake_refine)
+    assert cli_download(args) == 0
+    assert calls == [(tmp_path, "NormattivaFetcher", 7)]
+    captured = capsys.readouterr()
+    assert "4 probes, 1 redundant files deleted, boundaries 2025-03-15" in captured.out
+    assert "1 snapshots available" in captured.out
+    assert "between 2025-01-01 and 2025-02-01" in captured.err
+
+
+@pytest.mark.parametrize("cause", ["file", "read-only"])
+def test_cli_download_reports_unwritable_directories(tmp_path: Path, capsys, cause: str) -> None:
+    parent = tmp_path / "parent"
+    if cause == "file":
+        parent.write_text("not a directory")
+    else:
+        parent.mkdir(mode=0o500)
+    args = argparse.Namespace(raw_dir=str(parent / "akn"), delay=0, force=False)
+    try:
+        assert cli_download(args) == 1
+    finally:
+        if parent.is_dir():
+            parent.chmod(0o700)
+    err = capsys.readouterr().err
+    assert "Cannot write snapshots to" in err and "Traceback" not in err

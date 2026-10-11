@@ -3,13 +3,14 @@
 ``parse_snapshot`` turns one export into units with canonical keys (commi, articles without
 commi, allegato blocks), ``build_versions`` derives their point-in-time versions across all
 snapshots and ``load_corpus`` writes them to PostgreSQL. ``download_snapshots`` fetches the
-exports from Normattiva.
+exports from Normattiva and ``refine_snapshots`` dates every change exactly by bisection.
 """
 
 from appalti_qa.ingest.akn import ActInfo, ParsedSnapshot, ParsedUnit, parse_snapshot
 from appalti_qa.ingest.commands import cli_download, cli_ingest
 from appalti_qa.ingest.download import download_snapshots
 from appalti_qa.ingest.loader import LoadStats, load_corpus
+from appalti_qa.ingest.refine import RefineReport, refine_snapshots
 from appalti_qa.ingest.versioning import VersionedCorpus, VersionRecord, build_versions
 
 __all__ = [
@@ -17,6 +18,7 @@ __all__ = [
     "LoadStats",
     "ParsedSnapshot",
     "ParsedUnit",
+    "RefineReport",
     "VersionRecord",
     "VersionedCorpus",
     "build_versions",
@@ -25,4 +27,5 @@ __all__ = [
     "download_snapshots",
     "load_corpus",
     "parse_snapshot",
+    "refine_snapshots",
 ]

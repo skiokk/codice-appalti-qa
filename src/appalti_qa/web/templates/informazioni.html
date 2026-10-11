@@ -16,7 +16,7 @@
         <h2>Fonti</h2>
         <p>Il testo è quello del decreto legislativo 31 marzo 2023, n. 36, e dei suoi allegati, nelle versioni consolidate (multivigenti) pubblicate da Normattiva in formato Akoma Ntoso. Per ogni comma il sistema conserva tutte le versioni che si sono succedute, con le date di inizio e fine vigenza e l'atto che lo ha modificato.</p>
         {% if available %}
-        <p>Testi disponibili dal {{ available[0]|data_estesa }}; ultimo aggiornamento consolidato del {{ available[1]|data_estesa }}.</p>
+        <p>Testi disponibili dal {{ available[0]|data_estesa }}; l'ultima modifica registrata è in vigore dal {{ available[1]|data_estesa }}.</p>
         {% endif %}
       </section>
 
@@ -34,7 +34,7 @@
         <h2>Limiti</h2>
         <ul>
           <li>Considera solo il Codice e i suoi allegati: non include giurisprudenza, linee guida ANAC, bandi tipo, regolamenti o altre norme richiamate.</li>
-          <li>Le versioni seguono gli aggiornamenti consolidati di Normattiva: una modifica è registrata dalla data di vigenza del testo consolidato che la contiene.</li>
+          <li>Le versioni seguono i testi consolidati di Normattiva: ogni modifica decorre dal primo giorno in cui Normattiva pubblica il testo aggiornato. Se più atti entrano in vigore nello stesso giorno, la modifica è attribuita all'ultimo pubblicato; le variazioni di sola punteggiatura o di suddivisione in commi sono indicate come modifiche redazionali, senza atto modificativo.</li>
           <li>Le domande molto generiche o che richiedono un'interpretazione possono ricevere risposte parziali.</li>
           <li>Le domande sono limitate a {{ settings.max_question_chars }} caratteri{% if settings.rate_limit_per_ip_per_hour %} e a {{ settings.rate_limit_per_ip_per_hour }} all'ora per utente{% endif %}.</li>
         </ul>

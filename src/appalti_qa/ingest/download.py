@@ -5,7 +5,8 @@ XML once a session cookie has been obtained from the act's page. The downloader 
 the text in force today, reads the amendment dates from its lifecycle and then fetches the text
 in force on each of them: the original act on the day after its publication (its entry into
 force), every amendment on the date recorded in the lifecycle. Requests are sequential and
-spaced by ``delay_s`` seconds; files already present are not downloaded again.
+spaced by ``delay_s`` seconds; files already present are not downloaded again, and neither are
+dates already covered by a refine (``refined.json``, see ``appalti_qa.ingest.refine``).
 """
 
 from __future__ import annotations
@@ -19,7 +20,8 @@ from pathlib import Path
 import httpx
 from lxml import etree
 
-from appalti_qa.ingest.akn import read_events
+from appalti_qa.ingest.akn import read_events, vigenza_from_filename
+from appalti_qa.ingest.manifest import read_manifest
 from appalti_qa.ingest.xmlutil import AKN_NS
 from appalti_qa.models import Event
 
@@ -44,6 +46,17 @@ class DownloadError(RuntimeError):
 
 def snapshot_path(raw_dir: Path, vigenza: date) -> Path:
     return raw_dir / f"{ACT_CODE}_{vigenza:%Y%m%d}.xml"
+
+
+def snapshot_files(raw_dir: Path) -> list[Path]:
+    """Files named CODE_YYYYMMDD.xml in ``raw_dir``, by vigenza date."""
+    files = []
+    for path in Path(raw_dir).glob("*.xml"):
+        try:
+            files.append((vigenza_from_filename(path), path))
+        except ValueError:
+            logger.debug("ignoring %s", path.name)
+    return [path for _, path in sorted(files)]
 
 
 def vigenza_dates(events: Sequence[Event], today: date) -> list[date]:
@@ -120,6 +133,32 @@ def _fetch(session: _PoliteSession, path: Path, vigenza: date) -> Path:
     return path
 
 
+class NormattivaFetcher:
+    """Downloads the export in force on a day; one session, requests spaced by ``delay_s``.
+
+    The session page is visited before the first export and again when Normattiva answers with
+    an HTML page instead of XML (expired session).
+    """
+
+    def __init__(self, *, delay_s: float = 2.0, client: httpx.Client | None = None) -> None:
+        self._owned = client is None
+        self._client = client or httpx.Client(timeout=TIMEOUT_S, follow_redirects=True)
+        self._session = _PoliteSession(self._client, delay_s)
+
+    def __call__(self, vigenza: date, path: Path) -> Path:
+        return _fetch(self._session, path, vigenza)
+
+    def close(self) -> None:
+        if self._owned:
+            self._client.close()
+
+    def __enter__(self) -> NormattivaFetcher:
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        self.close()
+
+
 def download_snapshots(
     raw_dir: Path,
     *,
@@ -128,26 +167,30 @@ def download_snapshots(
     client: httpx.Client | None = None,
     today: date | None = None,
 ) -> list[Path]:
-    """Download (or reuse) every snapshot of the act; returns the files sorted by date."""
+    """Download (or reuse) every snapshot of the act; returns the files sorted by date.
+
+    Days up to the ``verified_through`` date of a previous refine are not requested again
+    (unless ``force``): their content is that of the boundary file before them.
+    """
     raw_dir = Path(raw_dir)
     raw_dir.mkdir(parents=True, exist_ok=True)
     today = today or date.today()
-    owned = client is None
-    client = client or httpx.Client(timeout=TIMEOUT_S, follow_redirects=True)
-    session = _PoliteSession(client, delay_s)
+    manifest = None if force else read_manifest(raw_dir)
+    known_until = manifest.verified_through if manifest and snapshot_files(raw_dir) else None
     fetched: set[date] = set()
 
-    def ensure(vigenza: date) -> Path:
-        path = snapshot_path(raw_dir, vigenza)
-        if vigenza in fetched or (path.exists() and not force):
-            return path
-        fetched.add(vigenza)
-        return _fetch(session, path, vigenza)
+    with NormattivaFetcher(delay_s=delay_s, client=client) as fetch:
 
-    try:
-        latest = ensure(today)
-        paths = [ensure(vigenza) for vigenza in vigenza_dates(read_events(latest), today)]
-    finally:
-        if owned:
-            client.close()
-    return sorted(set(paths))
+        def ensure(vigenza: date) -> Path | None:
+            path = snapshot_path(raw_dir, vigenza)
+            if vigenza in fetched or (path.exists() and not force):
+                return path
+            if known_until is not None and vigenza <= known_until:
+                return None
+            fetched.add(vigenza)
+            return fetch(vigenza, path)
+
+        latest = ensure(today) or snapshot_files(raw_dir)[-1]
+        for vigenza in vigenza_dates(read_events(latest), today):
+            ensure(vigenza)
+    return snapshot_files(raw_dir)

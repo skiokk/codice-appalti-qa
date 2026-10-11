@@ -59,6 +59,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--raw-dir", default=str(settings.raw_dir))
     p.add_argument("--delay", type=float, default=2.0, help="seconds between requests")
     p.add_argument("--force", action="store_true", help="re-download cached files")
+    p.add_argument(
+        "--refine",
+        action="store_true",
+        help="date every change exactly by bisection and keep only boundary snapshots",
+    )
+    p.add_argument("--max-probes", type=int, default=150, help="most exports --refine may download")
     p.set_defaults(handler=_delegate("appalti_qa.ingest", "cli_download"))
 
     p = sub.add_parser("ingest", help="parse snapshots and load versioned units into the DB")
