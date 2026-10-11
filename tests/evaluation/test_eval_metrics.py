@@ -135,11 +135,28 @@ def test_answer_metrics_records_failures(
 
 
 def test_answer_metrics_unknown_price(items: list[EvalItem], make_answer: Callable) -> None:
-    def answer(question: str, at_date: date) -> Answer:
-        return make_answer(items[0], "Risposta [1].", ["50/1"], provider="anthropic", model="x")
+    """Known costs are summed; answers by a model without a price are counted apart."""
+    models = {items[0].id: "claude-opus-5-5", items[1].id: "x", items[3].id: "claude-opus-5"}
 
-    metrics = answer_metrics(items[:1], answer, OverlapJudge())
-    assert metrics["overall"]["cost_usd"] is None
+    def answer(question: str, at_date: date) -> Answer:
+        item = next(item for item in items if item.question == question)
+        model = models.get(item.id, "y")
+        return make_answer(
+            item, "Risposta [1].", ["50/1"], provider="anthropic", model=model, tokens=(10**6, 0)
+        )
+
+    overall = answer_metrics(items, answer, OverlapJudge())["overall"]
+    assert overall["cost_usd"] == pytest.approx(4.0 + 5.0)
+    assert overall["cost_unknown"] == 2
+    assert overall["judge_cost_unknown"] == 0
+
+    only_unknown = answer_metrics(items[1:3], answer, OverlapJudge())["overall"]
+    assert only_unknown["cost_usd"] is None and only_unknown["cost_unknown"] == 2
+
+
+def test_answer_metrics_all_priced(items: list[EvalItem], stub_answer: Callable) -> None:
+    overall = answer_metrics(items, stub_answer, OverlapJudge())["overall"]
+    assert overall["cost_unknown"] == 0
 
 
 def test_pricing() -> None:
@@ -149,3 +166,17 @@ def test_pricing() -> None:
     assert cost_usd("groq", "openai/gpt-oss-120b", 10**6, 10**6) == 0.0
     assert cost_usd("fake", "fake", 10, 10) == 0.0
     assert price_for("anthropic", "unknown-model") is None
+
+
+@pytest.mark.parametrize(
+    ("model", "expected"),
+    [
+        ("claude-opus-5", 30.0),
+        ("claude-opus-4-8", 30.0),
+        ("claude-sonnet-5", 12.0),
+        ("claude-fable-5-1", 60.0),
+    ],
+)
+def test_pricing_fallback_models(model: str, expected: float) -> None:
+    """Models the server-side refusal fallback may answer with have a price."""
+    assert cost_usd("anthropic", model, 1_000_000, 1_000_000) == pytest.approx(expected)

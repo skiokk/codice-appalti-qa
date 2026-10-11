@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping, Sequence
-from datetime import UTC, date, datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -17,28 +17,6 @@ from appalti_qa.evaluation.metrics import (
     answer_metrics,
     retrieval_metrics,
 )
-from appalti_qa.models import Hit
-
-
-class CachedRetriever:
-    """Retrieves once per (question, date) at a fixed depth and serves shorter prefixes.
-
-    Lets the retrieval metrics and the answer generation of a run share the same ranking.
-    """
-
-    def __init__(self, retrieve: Retriever, depth: int) -> None:
-        self._retrieve = retrieve
-        self._depth = depth
-        self._cache: dict[tuple[str, date], tuple[int, list[Hit]]] = {}
-
-    def __call__(self, question: str, at_date: date, k: int) -> list[Hit]:
-        key = (question, at_date)
-        depth, hits = self._cache.get(key, (0, []))
-        if k > depth:
-            depth = max(k, self._depth)
-            hits = self._retrieve(question, at_date, depth)
-            self._cache[key] = (depth, hits)
-        return hits[:k]
 
 
 def _slug(text: str) -> str:
@@ -118,8 +96,9 @@ def run_answer_eval(
     """Answer metrics, plus the retrieval metrics of `retrieve` when given.
 
     `config` must name the "provider" and "model"; they make up the run id. Questions are
-    answered first, so each answer's latency includes its retrieval; when `retrieve` is the
-    `CachedRetriever` used by `answer`, the retrieval metrics then reuse the same rankings.
+    answered first, so each answer's latency includes its own retrieval; the retrieval metrics
+    then call `retrieve` again at the depth of the largest cutoff, leaving the answers' retrieval
+    exactly as in production.
     """
     now = now or datetime.now(UTC)
     answers = answer_metrics(items, answer, judge)

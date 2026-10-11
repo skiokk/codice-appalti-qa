@@ -1,8 +1,8 @@
 # Architecture and module contract
 
-This document is the contract between the modules of `appalti_qa`. Every module is built against
-the signatures below; where a module depends on another one, it codes against this contract and
-tests with fakes or monkeypatching, never against the other module's internals.
+This document describes the packages of `appalti_qa` and the interfaces between them. Packages
+use each other only through the public names listed below, and the tests of a package replace the
+packages it depends on with fakes or monkeypatching rather than relying on their internals.
 
 ```
  Normattiva AKN snapshots ──► ingest ──► PostgreSQL (units, unit_versions, events)
@@ -13,38 +13,41 @@ tests with fakes or monkeypatching, never against the other module's internals.
                  web (FastAPI, htmx, Bootstrap Italia)      evaluation (dataset, metrics, judge, report)
 ```
 
-## 1. Ownership
+## 1. Package boundaries
 
-| Area | Owner | Paths |
-| --- | --- | --- |
-| Foundation (shared, read-only for everyone else) | foundation | `pyproject.toml`, `docker-compose.yml`, `Dockerfile`, `.env.example`, `.github/**`, `sql/schema.sql`, `src/appalti_qa/{__init__,config,db,keys,models,cli}.py`, `tests/conftest.py`, `tests/test_smoke.py`, `docs/architecture.md`, `docs/decisions.md`, `README.md` |
-| ingest | ingest | `src/appalti_qa/ingest/**`, `tests/ingest/**`, `docs/modules/ingest.md` |
-| retrieval | retrieval | `src/appalti_qa/retrieval/**`, `tests/retrieval/**`, `docs/modules/retrieval.md` |
-| llm + answer | llm | `src/appalti_qa/llm/**`, `src/appalti_qa/answer/**`, `tests/llm/**`, `tests/answer/**`, `docs/modules/llm.md` |
-| web | web | `src/appalti_qa/web/**`, `tests/web/**`, `docs/modules/web.md` |
-| evaluation | evaluation | `src/appalti_qa/evaluation/**`, `tests/evaluation/**`, `eval/results/**`, `docs/modules/evaluation.md` |
+| Package | Public API (`__init__.py`) | Depends on | Notes |
+| --- | --- | --- | --- |
+| shared modules | `config`, `db`, `keys`, `models`, `cli` (section 3) | — | settings, connections, canonical keys, shared models, the `appalti-qa` entry point |
+| `ingest` | `parse_snapshot`, `build_versions`, `load_corpus`, `download_snapshots`, `refine_snapshots`, `cli_download`, `cli_ingest`, dataclasses (section 4) | `db`, `keys`, `models` | the only writer of the corpus tables |
+| `retrieval` | `search`, `lookup`, `history`, `available_range`, `extract_refs`, `normattiva_url`, embedders, `embed_missing`, `cli_embed` (section 5) | `config`, `db`, `keys`, `models` | read-only on the corpus, except embeddings |
+| `llm` | `get_provider`, `LLMProvider`, `Generation`, `LLMError`, the providers, `ABSTAIN_TOKEN` (section 6) | `config`, `models` | no database access |
+| `answer` | `answer_question`, `Retriever`, `ABSTAIN_MESSAGE` (section 6) | `llm`, `retrieval` (lazily, default retriever only), `config`, `models` | |
+| `web` | `create_app`, `cli_serve`, `AnswerFn` (section 7) | `answer`, `retrieval`, `llm` (`LLMError`), shared modules | writes only `qa_log`; reads `eval/results/latest.json` |
+| `evaluation` | dataset, metrics, judges, xlsx review, reports, `cli_main` (section 8) | `answer`, `retrieval`, `llm`, shared modules | writes `eval/results/**`; edits `eval/dataset.yaml` only through `import-xlsx` |
 
-`eval/dataset.yaml` is authored separately (questions verified by a human); the evaluation module
-reads it but does not write questions into it, except through `import-xlsx` (section 8).
+Imports go one way: `ingest` and `retrieval` never import `llm`, `answer`, `web` or `evaluation`,
+and only the `cli` entry point imports `web` and `evaluation`. Each package's `__init__.py` re-exports exactly the
+public names listed for it. `eval/dataset.yaml` holds questions checked by a human reviewer; the
+evaluation package reads it and writes it back only through `import-xlsx` (section 8).
 
-Rules for every module:
+Contributor guidelines:
 
-- Do not edit files owned by another module. A shared change (a dependency, a setting, a column,
-  a fixture) is proposed and applied to the foundation files, then recorded here.
+- A change that crosses packages (a dependency, a setting, a column, a fixture) goes in the shared
+  modules first and is recorded in this document.
 - Everything runs offline by default: `LLM_PROVIDER=fake`, no API keys. Never require a key in
   tests; tests must not hit the network (use `httpx.MockTransport` or fakes).
 - DB tests use the fixtures in `tests/conftest.py` (`db_url`, `db_conn`, `seeded_conn`,
-  `db_settings`) and are marked `@pytest.mark.db`. Never touch another database.
+  `db_settings`) and are marked `@pytest.mark.db`. They run on a throwaway database, never on the
+  main one.
 - Tests that load real models or parse the full corpus are marked `@pytest.mark.slow` and skip
   cleanly when the resource is missing (CI runs `pytest -m "not slow"`).
-- Each package's `__init__.py` re-exports exactly the public names listed for it below.
 - English for code, comments and docs; Italian for user-facing UI text, prompts shown to users and
   eval questions. Use `logging.getLogger(__name__)`, not `print`, except in `cli_*` functions.
 - Lint: `ruff check . && ruff format --check .` (line length 100). Typed, small modules.
 
 ## 2. Canonical unit key
 
-Implemented in `appalti_qa.keys` (shared; use it, do not reimplement it).
+Implemented in `appalti_qa.keys`, the single implementation every package uses.
 
 - Article number from `<num>`: `"Articolo 50."` → `"50"`; `"Articolo 225-bis."` → `"225-bis"`.
 - Comma from paragraph `<num>`: `"1."` → `"1"`; `"1-bis."` → `"1-bis"`.
@@ -77,15 +80,16 @@ def sort_key(key: str) -> tuple                       # document order, "4" < "4
 
 Observed in the corpus:
 
-- Snapshot 2026-10-11: 233 articles, 1319 paragraphs, 690 points, 323 allegato docs. The 24
-  paragraphs without `<num>` are not single-comma articles: they are headings exported as
-  paragraphs, Normattiva "AGGIORNAMENTO" notes, and the repealed art. 109, which is the only
-  article-level unit. Ingested: 2,811 units (1,319 commi, 1 article unit, 1,491 allegato units
-  across 41 allegati).
+- Snapshot 2026-08-26 (the text in force on 2026-10-11): 233 articles, 1319 paragraphs, 690
+  points, 323 allegato docs. The 24 paragraphs without `<num>` are not single-comma articles:
+  they are headings exported as paragraphs, Normattiva "AGGIORNAMENTO" notes, and the repealed
+  art. 109, which is the only article-level unit. In force on that date: 2,811 units (1,319 commi,
+  1 article unit, 1,491 allegato units across 41 allegati); 2,814 units over all snapshots.
 - Exports up to 2024-12-31 are flat: article `<num>` is `"Art. 50."` and each article is one
   paragraph of running text with commi and lettere inline, so commi and lettere are found in the
   text (a comma number counts only after punctuation, continuing the numbering, outside «...»
-  quotes). Exports from 2025-04-01 have one `<paragraph>` per comma and one `<point>` per lettera.
+  quotes). Exports from 2025-03-15 (the first refined boundary of 2025) have one `<paragraph>`
+  per comma and one `<point>` per lettera.
 - Allegato docs are named `"Allegato I.1-art. 2"`, `"Allegati - Allegato I.01 art. 1"`,
   `"Allegato I.4-art 1"`, `"Allegato I.7-art. 4 bis"`, `"Allegato I.3"` (no articles),
   `"Allegato I.4-Tabella A"`, `"Allegato II.2-Allegato II.2 bis Tabella A"` (the last allegato named
@@ -93,7 +97,7 @@ Observed in the corpus:
   every snapshot and are split into commi by line-leading numbers. An allegato with no numbered
   blocks at all is one unit with the bare key `"all:X"`.
 
-## 3. Shared code (foundation)
+## 3. Shared code
 
 ### 3.1 `appalti_qa.config`
 
@@ -118,8 +122,10 @@ class Settings(BaseSettings):            # env vars / .env, case-insensitive, ex
     min_relevance_score: float = 0.0
     max_question_chars: int = 500
     rate_limit_per_ip_per_hour: int = 20; rate_limit_global_per_day: int = 500
+    rate_limit_search_per_ip_per_hour: int = 120     # GET /api/v1/search, separate budget
     client_hash_salt: SecretStr | None = None
-    forwarded_allow_ips: str = ""          # trusted reverse proxies (IPs/CIDRs) for X-Forwarded-For
+    forwarded_allow_ips: str = ""          # trusted reverse proxies (IPs/CIDRs) for X-Forwarded-For;
+                                           # "*": only the rightmost hop is used
     log_level: str = "INFO"
 
     def api_key(self, provider: ProviderName) -> str | None
@@ -153,14 +159,17 @@ docstring says so (writers like `load_corpus` and `embed_missing` commit).
 
 - `acts(id, code UNIQUE "23G00044", urn UNIQUE "urn:nir:stato:decreto.legislativo:2023-03-31;36", title, short_title, issued_on)`
 - `snapshots(id, act_id, vigenza_date, effective_date, source_file, sha256, ingested_at)`, unique `(act_id, vigenza_date)`;
-  one row per *distinct* snapshot actually used.
+  one row per *distinct* snapshot actually used; `effective_date` equals `vigenza_date` (section 4).
 - `events(id, act_id, event_date, kind 'original'|'amendment', amending_urn, amending_label)`,
   unique `(act_id, amending_urn, event_date)`.
 - `units(id, act_id, key, kind 'article'|'comma'|'allegato_block', article, comma, allegato, heading, ordinal)`,
   unique `(act_id, key)`. Every unit inside an allegato has kind `allegato_block` (with `allegato`
   set and `article`/`comma` filled when the allegato is structured). `heading` = latest heading;
   `ordinal` = document order over the whole act (code body, then allegati in order).
-- `unit_versions(id, unit_id, heading, text, text_hash, valid_from, valid_to, changed_by_event, repealed, tsv, embedding vector(DIM), embedding_model)`.
+- `unit_versions(id, unit_id, heading, text, text_hash, valid_from, valid_to, changed_by_event, change_kind, repealed, tsv, embedding vector(DIM), embedding_model)`.
+  - `change_kind` is `'original'`, `'amendment'` (default) or `'editorial'`; `changed_by_event`
+    is set only for amendments. The schema adds the column to databases created without it
+    (`ALTER TABLE ... ADD COLUMN IF NOT EXISTS`), so `init-db` or `ingest` upgrades them.
   - In force at date D: `valid_from <= D AND (valid_to IS NULL OR valid_to > D)`; `valid_to` is
     exclusive. An exclusion constraint forbids overlapping intervals for the same unit.
   - `text_hash` = sha256 hex of `text` (UTF-8).
@@ -173,6 +182,7 @@ docstring says so (writers like `load_corpus` and `embed_missing` commit).
 
 ```python
 UnitKind = Literal["article", "comma", "allegato_block"]
+ChangeKind = Literal["original", "amendment", "editorial"]
 
 class Event(BaseModel):
     id: int | None = None; date: date; kind: Literal["original", "amendment"] = "amendment"
@@ -182,13 +192,14 @@ class UnitVersion(BaseModel):
     id: int | None = None; unit_key: str; kind: UnitKind
     article: str | None; comma: str | None; allegato: str | None; heading: str | None
     text: str; text_hash: str; valid_from: date; valid_to: date | None
-    changed_by: Event | None; repealed: bool = False
+    changed_by: Event | None; change_kind: ChangeKind = "amendment"; repealed: bool = False
     def in_force_at(self, day: date) -> bool
 
 class Hit(BaseModel):
     unit_key: str; version_id: int; heading: str | None; text: str; score: float
     valid_from: date; valid_to: date | None; normattiva_url: str
     modified_by: list[Event] = []                       # amendments to this unit up to the query date
+                                                        # (editorial versions have no event)
     label: str                                          # property, key_label(unit_key)
 
 class Citation(BaseModel):
@@ -204,17 +215,17 @@ class Answer(BaseModel):
 
 ### 3.5 `appalti_qa.cli`
 
-`appalti-qa <command>`; each handler imports its module lazily and prints a clear message (exit 2)
-when the target is not available yet.
+`appalti-qa <command>`; each handler imports its package lazily, so a missing optional dependency
+only affects its own command, which then prints a clear message (exit 2).
 
 | Command | Delegates to | Arguments (argparse `Namespace` attributes) |
 | --- | --- | --- |
 | `init-db` | `appalti_qa.db.init_schema()` | — |
-| `download` | `appalti_qa.ingest.cli_download(args) -> int` | `raw_dir: str`, `delay: float = 2.0`, `force: bool` |
+| `download` | `appalti_qa.ingest.cli_download(args) -> int` | `raw_dir: str`, `delay: float = 2.0`, `force: bool`, `refine: bool`, `max_probes: int = 150` |
 | `ingest` | `appalti_qa.ingest.cli_ingest(args) -> int` | `raw_dir: str` |
 | `embed` | `appalti_qa.retrieval.cli_embed(args) -> int` | `batch_size: int`, `limit: int \| None` |
 | `serve` | `appalti_qa.web.cli_serve(args) -> int` | `host: str = "127.0.0.1"`, `port: int = 8000`, `reload: bool` |
-| `eval ...` | `appalti_qa.evaluation.cli_main(argv: list[str]) -> int` | raw remaining argv, leading options included (`eval -h`); evaluation owns its sub-parser |
+| `eval ...` | `appalti_qa.evaluation.cli_main(argv: list[str]) -> int` | raw remaining argv, leading options included (`eval -h`); the evaluation package defines its sub-parser |
 
 ### 3.6 Test fixtures (`tests/conftest.py`)
 
@@ -228,7 +239,8 @@ session and clears the `get_settings()` cache around each test.
 - `db_settings -> Settings`: offline settings with `database_url=db_url`.
 - `db_conn -> psycopg.Connection`: pgvector-enabled connection; all tables truncated afterwards.
 - `seeded_conn -> psycopg.Connection`: `db_conn` plus `seed_corpus()` (committed): units `1/1`,
-  `50/1` (two versions, changed on 2024-12-31 by "D.Lgs. 31 dicembre 2024, n. 209"), `225-bis`
+  `50/1` (two versions, changed on 2024-12-31 by "D.Lgs. 31 dicembre 2024, n. 209"; versions
+  from the first snapshot have `change_kind` `original`), `225-bis`
   (article without commi, from 2024-12-31), `all:I.3/p1`; constants `SEED_ORIGINAL`
   (2023-04-01), `SEED_AMENDMENT` (2024-12-31), `SEED_UNITS`. No embeddings.
 
@@ -239,7 +251,9 @@ pass `conn=` explicitly.
 ## 4. ingest
 
 Package `appalti_qa.ingest`; exports `parse_snapshot`, `build_versions`, `load_corpus`,
-`download_snapshots`, `cli_download`, `cli_ingest`, and the dataclasses below.
+`download_snapshots`, `refine_snapshots`, `cli_download`, `cli_ingest`, and the dataclasses below
+(`ActInfo`, `ParsedSnapshot`, `ParsedUnit`, `VersionRecord`, `VersionedCorpus`, `LoadStats`,
+`RefineReport`).
 
 ```python
 # appalti_qa/ingest/akn.py
@@ -283,6 +297,7 @@ with `repealed=True`. Event labels are Italian and human-readable (`"D.L. 10 mag
 class VersionRecord:
     unit_key: str; heading: str | None; text: str; text_hash: str
     valid_from: date; valid_to: date | None; changed_by: Event | None; repealed: bool
+    change_kind: ChangeKind = "amendment"
 
 @dataclass(slots=True)
 class VersionedCorpus:
@@ -292,29 +307,36 @@ class VersionedCorpus:
     units: list[ParsedUnit]                        # latest metadata per key, final ordinals
     versions: list[VersionRecord]
 
+def content_digest(snapshot: ParsedSnapshot) -> str   # keys, headings and wording; layout ignored
 def effective_date(snapshot: ParsedSnapshot, previous_vigenza: date | None) -> date
+    # the vigenza_date; the expression date is only compared with it and disagreements logged
 def build_versions(snapshots: Sequence[ParsedSnapshot]) -> VersionedCorpus
 ```
 
-Versioning rules:
+Versioning rules (decision 7 in `docs/decisions.md`):
 
-1. Sort by `vigenza_date`; skip a snapshot whose `sha256` equals the previous kept one (several
-   consecutive files are byte-identical).
-2. Effective date: `vigenza_date`, unless `expression_date` lies strictly after the `vigenza_date`
-   of the previous file (byte-identical files included) and before `vigenza_date`, in which case
-   the expression date is used. The lifecycle dates are publication dates of the amending acts;
-   the expression date is when the consolidated text actually took effect (file `20261011`
-   carries `2026-08-26`, D.Lgs. 149/2026 published 2026-08-11; file `20260811` carries
-   `2026-04-07`, L. 34/2026 published 2026-03-23 after a 15-day vacatio legis).
-3. For each key, a new version starts when the wording (ignoring line breaks and `((...))`
-   markers) or the heading differs from the open version, so the 2025 switch from flat to
-   structured exports creates no versions; an unchanged version keeps the latest rendering of its
-   text. The open version gets `valid_to` = the new `valid_from`. A key missing from a later
-   snapshot is closed at that snapshot's effective date; if it reappears it gets a new version.
-4. `changed_by` of a version = the latest amendment in the lifecycle of the snapshot that
-   introduced it (so a version is credited to the act that brought it, not to a later act
-   published before its effective date); `None` for versions from the first snapshot. When several
-   acts enter one snapshot, the latest one is credited.
+1. Sort by `vigenza_date`. A snapshot whose `content_digest` equals the previous one adds no
+   version; it only refreshes the stored rendering of the open versions.
+2. A version takes effect on the `vigenza_date` of the snapshot that introduced it. After
+   `appalti-qa download --refine` every file is a boundary named by the first day Normattiva
+   serves its content, so this is the exact date of the change. The FRBRExpression date is stale
+   in several exports and is only compared: `INFO` when stale, `WARNING` when it falls between
+   the previous file and this one (the directory was not refined) or after the file date.
+3. For each key, a new version starts when the wording differs from the open version
+   (`content_fingerprint`: whitespace, dots, hyphens, quotes, apostrophe-style accents and
+   `((...))` markers ignored), so the 2025 switch from flat to structured exports creates no
+   versions. A change of the heading alone updates the open version's heading without a new
+   version, and an unchanged version keeps the latest rendering of its text. The open version
+   gets `valid_to` = the new `valid_from`. A key missing from a later snapshot is closed at that
+   snapshot's date; if it reappears it gets a new version.
+4. `change_kind`: `original` for versions of the first snapshot; `editorial` when only
+   punctuation or capitalisation changed (same `word_fingerprint`) or the article's words are
+   split into commi differently; `amendment` otherwise (including a unit that appears or
+   reappears). `changed_by` of an amendment = the latest amendment dated on or before
+   `valid_from` in the lifecycle of the snapshot that introduced it (all known events when that
+   lifecycle has none); `None` for original and editorial versions. Doubtful attributions (no
+   act since the previous change, several acts in the interval, an act published but missing
+   from the export's lifecycle) are logged.
 5. Versions of the last snapshot stay open (`valid_to=None`).
 
 ```python
@@ -334,13 +356,30 @@ and restore them on matching new rows.
 # appalti_qa/ingest/download.py
 def download_snapshots(raw_dir: Path, *, delay_s: float = 2.0, force: bool = False,
                        client: httpx.Client | None = None, today: date | None = None) -> list[Path]
-def cli_download(args: argparse.Namespace) -> int
+class NormattivaFetcher:             # (vigenza, path) -> path; one session cookie, delay_s apart
+    def __init__(self, *, delay_s: float = 2.0, client: httpx.Client | None = None) -> None
+
+# appalti_qa/ingest/refine.py
+@dataclass(slots=True)
+class RefineReport:
+    boundaries: list[date]; probes: int; unresolved: list[tuple[date, date]]; deleted: list[str]
+def refine_snapshots(raw_dir: Path, fetch: Callable[[date, Path], Path], *,
+                     max_probes: int = 150,
+                     digest: Callable[[Path], str] = file_digest) -> RefineReport
+
+# appalti_qa/ingest/commands.py
+def cli_download(args: argparse.Namespace) -> int    # download, then refine with --refine
 def cli_ingest(args: argparse.Namespace) -> int      # parse raw_dir, build, init_schema, load, print stats
 ```
 
 The downloader is polite (one request at a time, `delay_s` between requests, a descriptive
-User-Agent), caches files in `raw_dir` (skips existing unless `force`), discovers the vigenza dates
-from the lifecycle of the latest snapshot, and never runs in tests against the real site.
+User-Agent, a session cookie from the act's page), caches files in `raw_dir` (skips existing
+unless `force`), discovers the vigenza dates from the lifecycle of the latest snapshot, and never
+runs in tests against the real site. `refine_snapshots` bisects on `dataVigenza` between
+neighbouring files whose `content_digest` differs, keeps only boundary files named by their first
+day, and records `verified_through`, the boundaries and any gap left by `max_probes` in
+`raw_dir/refined.json`; later downloads skip lifecycle dates up to `verified_through`, and later
+refines resume the open gaps.
 Tests: hand-written minimal AKN fixtures in `tests/ingest/fixtures/`; a `slow` test may parse the
 real `data/raw/akn` when present.
 
@@ -531,9 +570,13 @@ JSON API (`/api/v1`, OpenAPI docs at `/api/docs`): `POST /api/v1/answer` (alias 
 `GET /api/v1/search?q=&date=&k=&mode=` → `list[Hit]`; `GET /api/v1/units/{key:path}?date=` →
 `list[Hit]`; `GET /healthz` → `{"status": "ok", "db": bool}`.
 
-Rate limiting on the answering endpoints only: per client (hashed IP with `client_hash_salt`) per
+Rate limiting on the answering endpoints: per client (hashed IP with `client_hash_salt`) per
 rolling hour and global per day, from settings (0 disables a limit); 429 with `Retry-After` and an
-Italian message. Limits are kept in process (they reset on restart and are per worker). Each
+Italian message. `GET /api/v1/search` has its own per-client hourly budget
+(`rate_limit_search_per_ip_per_hour`), `k <= 20`, and caches query embeddings (LRU, 256 entries).
+Invalid requests use no quota. Limits are kept in process (they reset on restart and are per
+worker). Clients are bucketed before hashing (IPv6 by /64); with `forwarded_allow_ips="*"` only
+the rightmost `X-Forwarded-For` hop is trusted. Each
 answer is logged to `qa_log` (best effort; a logging failure never breaks the response). Validation errors → 422 with Italian messages; `LLMError` → 503 with a generic message.
 
 Accessibility (WCAG 2.1 AA): `lang="it"`, skip link, labelled controls, visible focus, sufficient
@@ -587,7 +630,8 @@ def retrieval_metrics(items, retrieve: Callable[[str, date, int], list[Hit]], *,
 def answer_metrics(items, answer: Callable[[str, date], Answer], judge: Judge) -> dict
     # correctness (judge, 0 / 0.5 / 1), citation precision and recall vs expected_refs,
     # abstention accuracy (unanswerable should abstain, others should not), latency p50/p95,
-    # tokens; overall, by kind and by category; plus per-item records
+    # tokens, cost (known prices summed, cost_unknown counts answers without a price);
+    # overall, by kind and by category; plus per-item records
 
 # appalti_qa/evaluation/judge.py
 @dataclass(frozen=True) class JudgeVerdict:
@@ -611,18 +655,22 @@ def render_report(results: dict) -> str                             # markdown
 def cli_main(argv: Sequence[str] | None = None) -> int
 ```
 
-CLI (`appalti-qa eval <sub>`): `validate [--db]`, `retrieval [--mode] [--k]`,
-`answers` (alias `run`) `[--provider] [--model] [--mode] [--k] [--limit] [--ids Q001,...]`,
-`report RESULTS.json`, `export-xlsx OUT.xlsx [--with-answers RESULTS.json]`,
+CLI (`appalti-qa eval <sub>`): `validate [--db]`, `retrieval [--mode] [--k] [--publish]`,
+`answers` (alias `run`) `[--provider] [--model] [--mode] [--k] [--limit] [--ids Q001,...]
+[--publish]`, `report RESULTS.json`, `export-xlsx OUT.xlsx [--with-answers RESULTS.json]`,
 `import-xlsx IN.xlsx [--db] [--dry-run]`, `compare RESULTS.json...`. Runs use only `verificata` and
-`corretta` questions unless `--all` is given; retrieval-only runs never overwrite `latest.json`.
+`corretta` questions unless `--all` is given. A run updates `latest.json` (the published results)
+only with `--publish`; `answers --publish` is refused when the answering provider or the judge
+resolves to fake, so placeholder numbers are never published. In an answer run each question is
+answered through `answer_question` with the same `search(question, date, k, mode)` call as the
+app; the retrieval metrics come from separate calls at the largest cutoff.
 The xlsx is for a human reviewer: Italian column headers, wrapped text, frozen header row, an
 `Esito` dropdown (`OK`, `Da correggere`, `Scartare`) and a `Correzione` column; on import, edited
 rows become `corretta`, `OK` rows `verificata` and `Scartare` rows `scartata` (kept, never
 evaluated). Every metric group carries an `n` count, and a metric is `null` when it has no data.
 
-Results JSON (`eval/results/<UTC timestamp>_<provider>_<model>.json`, also copied to
-`eval/results/latest.json`; the web page reads it):
+Results JSON (`eval/results/<UTC timestamp>_<provider>_<model>.json`, copied to
+`eval/results/latest.json` when published; the web page reads it):
 
 ```json
 {
@@ -634,7 +682,8 @@ Results JSON (`eval/results/<UTC timestamp>_<provider>_<model>.json`, also copie
   "retrieval": {"overall": {"recall@1": 0.0, "recall@5": 0.0, "mrr": 0.0}, "by_kind": {}, "by_category": {}},
   "answer": {"overall": {"correctness": 0.0, "citation_precision": 0.0, "citation_recall": 0.0,
              "abstention_accuracy": 0.0, "latency_p50_ms": 0, "latency_p95_ms": 0,
-             "input_tokens": 0, "output_tokens": 0}, "by_kind": {}, "by_category": {}},
+             "input_tokens": 0, "output_tokens": 0, "cost_usd": 0.0, "cost_unknown": 0},
+             "by_kind": {}, "by_category": {}},
   "items": [{"id": "Q001", "retrieved": ["50/1"], "cited": ["50/1"], "abstained": false,
              "score": 1.0, "rationale": "...", "latency_ms": 0}]
 }

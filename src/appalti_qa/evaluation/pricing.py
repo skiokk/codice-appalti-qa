@@ -13,11 +13,18 @@ class Price:
     output_per_mtok: float
 
 
-# Anthropic first-party list prices, standard tier, without prompt-caching discounts.
+# Anthropic first-party list prices, standard tier, without prompt-caching discounts. The
+# server-side refusal fallback can answer with another model, so the models it may route to are
+# priced too.
 ANTHROPIC_PRICES: dict[str, Price] = {
     "claude-opus-5-5": Price(4.00, 20.00),
     "claude-sonnet-5-5": Price(2.00, 10.00),
     "claude-haiku-5-5": Price(0.10, 0.50),  # prompts up to 100K tokens
+    # fallback-eligible models
+    "claude-fable-5-1": Price(10.00, 50.00),
+    "claude-opus-5": Price(5.00, 25.00),
+    "claude-opus-4-8": Price(5.00, 25.00),
+    "claude-sonnet-5": Price(2.00, 10.00),
 }
 # The fake provider is free; Groq models are used on the free tier.
 FREE_PROVIDERS: frozenset[str] = frozenset({"fake", "groq"})

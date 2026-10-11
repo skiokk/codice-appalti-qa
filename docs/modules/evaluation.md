@@ -11,7 +11,7 @@ scored by a lexical-overlap judge.
 | `metrics.py` | `retrieval_metrics`, `answer_metrics`, grouping by kind and category |
 | `judge.py` | `JudgeVerdict`, `LLMJudge` (Italian rubric, JSON verdict), `OverlapJudge`, `get_judge` |
 | `pricing.py` | token prices and `cost_usd` |
-| `runner.py` | `CachedRetriever`, run ids, results documents for retrieval and answer runs |
+| `runner.py` | run ids, results documents for retrieval and answer runs |
 | `report.py` | `write_results`, `render_report` (markdown), `render_comparison` |
 | `xlsx.py` | `export_xlsx` / `import_xlsx`: the human review round trip |
 | `yaml_writer.py` | writes the dataset back, rewriting only changed lines and keeping comments |
@@ -47,9 +47,10 @@ that include drafts.
 `appalti-qa eval retrieval` computes them for each mode (lexical, semantic, hybrid).
 
 **Answers** (`appalti-qa eval answers`, alias `run`): each question goes through
-`answer.answer_question` with the configured provider. The run retrieves once per question
-(`CachedRetriever`), so the retrieval metrics in the results and the sources given to the model
-come from the same ranking.
+`answer.answer_question` with the configured provider, and its sources come from the same
+`search(question, date, k, mode)` call the app makes. The retrieval metrics of the run come from
+separate calls at the largest cutoff (10), so a question with refs is searched twice; the
+`retrieved` field of each item still lists the sources the model received.
 
 - `correctness`: judge score, 1 correct, 0.5 partial, 0 wrong. An abstention scores 1 on an
   unanswerable question and 0 otherwise, without calling the judge.
@@ -59,7 +60,8 @@ come from the same ranking.
 - `abstention_accuracy`: the system abstains on unanswerable questions and answers the others;
   `abstention_rate` is reported too.
 - `latency_p50_ms`, `latency_p95_ms` (nearest rank), token totals, `cost_usd` and
-  `judge_cost_usd`.
+  `judge_cost_usd`; `cost_unknown` and `judge_cost_unknown` count the answers and judgements
+  served by a model without a known price, which the totals leave out.
 - A failing answer or judge call (timeout, rate limit, unparsable verdict) is recorded on the item
   (`error`, `judge_error`), counted, and left out of the averages it affects.
 
@@ -84,24 +86,31 @@ List prices per million tokens, without prompt-caching discounts:
 | `claude-opus-5-5` | $4.00 | $20.00 |
 | `claude-sonnet-5-5` | $2.00 | $10.00 |
 | `claude-haiku-5-5` | $0.10 | $0.50 |
+| `claude-fable-5-1` (refusal fallback) | $10.00 | $50.00 |
+| `claude-opus-5`, `claude-opus-4-8` (refusal fallback) | $5.00 | $25.00 |
+| `claude-sonnet-5` (refusal fallback) | $2.00 | $10.00 |
 | Groq models (free tier), fake provider | $0 | $0 |
 
-An Anthropic model missing from the table makes the cost `null` rather than a wrong number.
+Known prices are summed; an Anthropic model missing from the table is counted in `cost_unknown`
+instead of adding a wrong number, and the total is `null` only when no answer has a known price.
 
 ## Results
 
 `write_results` writes `eval/results/<run_id>.json` and `<run_id>.md`, where the run id is
-`<UTC timestamp>_<provider>_<model>` (for example `20261011T120000Z_anthropic_claude-opus-5-5`),
-and copies both to `latest.json` / `latest.md`, which the web page `/valutazione` reads. The JSON
+`<UTC timestamp>_<provider>_<model>` (for example `20261011T120000Z_anthropic_claude-opus-5-5`).
+With `--publish` it also copies both to `latest.json` / `latest.md`, which the web page
+`/valutazione` reads. `answers --publish` is refused before anything runs (exit 2, nothing
+written) when the answering provider or the judge resolves to the fake provider, so placeholder
+numbers are never published. The JSON
 follows `docs/architecture.md` and adds, per item, the expected refs, the answer text and
 citations, citation precision and recall, tokens, cost and the judge verdict. Retrieval-only runs
 (`<timestamp>_retrieval.json`) add `retrieval_by_mode` and per-item rankings for each mode, and
-do not replace `latest.json`.
+replace `latest.json` only with `--publish` (useful before any answer run exists).
 
 ```bash
 appalti-qa eval validate --db
-appalti-qa eval retrieval --all --k 1,3,5,10           # all three modes
-appalti-qa eval answers --provider anthropic            # verified questions only
+appalti-qa eval retrieval --all --k 1,3,5,10 --publish # all three modes
+appalti-qa eval answers --provider anthropic --judge-provider anthropic --publish
 appalti-qa eval answers --provider groq --all --delay 2 # free tier rate limits
 appalti-qa eval report eval/results/latest.json
 appalti-qa eval compare eval/results/2026*.json

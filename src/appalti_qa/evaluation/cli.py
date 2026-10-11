@@ -33,7 +33,6 @@ from appalti_qa.evaluation.report import (
     write_results,
 )
 from appalti_qa.evaluation.runner import (
-    CachedRetriever,
     dataset_summary,
     run_answer_eval,
     run_retrieval_eval,
@@ -164,6 +163,7 @@ def _overview(results: dict[str, Any]) -> str:
             "latency_p50_ms",
             "latency_p95_ms",
             "cost_usd",
+            "cost_unknown",
             "errors",
         )
         lines.append(f"answers n={o['n']} " + " ".join(f"{n}={_fmt(o.get(n))}" for n in names))
@@ -235,26 +235,46 @@ def _cmd_retrieval(args: argparse.Namespace) -> int:
     return 0
 
 
+def _publish_refusal(provider: str, judge_provider: str) -> str | None:
+    """Why an answer run must not replace the published results, or None if it may."""
+    fake = [
+        role for role, name in (("answers", provider), ("judge", judge_provider)) if name == "fake"
+    ]
+    if not fake:
+        return None
+    return (
+        f"Refusing to publish: the {' and the '.join(fake)} would use the fake provider, so the"
+        " numbers are placeholders. Set the API keys (see LLM_PROVIDER, JUDGE_PROVIDER) or run"
+        " without --publish."
+    )
+
+
 def _cmd_answers(args: argparse.Namespace) -> int:
+    settings = get_settings()
+    requested = args.provider or settings.llm_provider
+    provider_name = settings.effective_provider(requested)
+    judge_settings = settings
+    if args.judge_provider:
+        judge_settings = settings.model_copy(update={"judge_provider": args.judge_provider})
+    if args.publish:
+        judge_provider = judge_settings.effective_provider(judge_settings.judge_provider)
+        refusal = _publish_refusal(provider_name, judge_provider)
+        if refusal:
+            print(refusal, file=sys.stderr)
+            return 2
     selection = _select(args)
     if selection is None:
         return 1
     items, summary = selection
-    settings = get_settings()
-    requested = args.provider or settings.llm_provider
-    provider_name = settings.effective_provider(requested)
     if provider_name != requested:
         print(f"No API key for {requested}: answering with the fake provider.", file=sys.stderr)
-    judge_settings = settings
-    if args.judge_provider:
-        judge_settings = settings.model_copy(update={"judge_provider": args.judge_provider})
     judge = get_judge(judge_settings)
     mode = args.mode or settings.retrieval_mode
     k = args.k or settings.default_top_k
     with _open_db() as conn:
-        retrieve = CachedRetriever(
-            _search_retriever(mode, conn, settings), depth=max(k, *DEFAULT_K_VALUES)
-        )
+        # Answers retrieve exactly as the app does (same k and mode); the retrieval metrics make
+        # their own deeper calls, since the fused ranking depends on the requested depth.
+        retrieve = _search_retriever(mode, conn, settings)
         answer, provider, model = _answer_backend(
             settings, provider_name, args.model, retrieve, k=k, mode=mode, delay_s=args.delay
         )
@@ -277,7 +297,7 @@ def _cmd_answers(args: argparse.Namespace) -> int:
         results = run_answer_eval(
             items, answer, judge, retrieve=retrieve, dataset=summary, config=config
         )
-    path = write_results(results, args.out, latest=not args.no_latest)
+    path = write_results(results, args.out, latest=args.publish)
     print(_overview(results))
     print(f"Results: {path}")
     return 0
@@ -376,7 +396,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.set_defaults(handler=_cmd_retrieval)
 
-    p = sub.add_parser("answers", aliases=["run"], help="answer and score the questions")
+    p = sub.add_parser(
+        "answers",
+        aliases=["run"],
+        help="answer and score the questions (latest.json only with --publish)",
+    )
     _add_selection(p)
     p.add_argument("--provider", choices=PROVIDERS, help="default: LLM_PROVIDER")
     p.add_argument("--model", help="default: the provider's configured model")
@@ -384,7 +408,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--k", type=int, help="sources given to the model (default: DEFAULT_TOP_K)")
     p.add_argument("--judge-provider", choices=PROVIDERS, help="default: JUDGE_PROVIDER")
     p.add_argument("--delay", type=float, default=0.0, help="seconds between questions")
-    p.add_argument("--no-latest", action="store_true", help="do not update latest.json")
+    p.add_argument(
+        "--publish",
+        action="store_true",
+        help="also write latest.json (the web page); refused when the provider or judge is fake",
+    )
     p.set_defaults(handler=_cmd_answers)
 
     p = sub.add_parser("report", help="markdown report of a results file")

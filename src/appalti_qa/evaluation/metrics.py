@@ -41,16 +41,26 @@ def _mean(field: str) -> Aggregator:
 
 
 def _total(field: str) -> Aggregator:
-    """Sum over the records that have the field; None if any of them is None (unknown price)."""
+    """Sum of the known values of the field.
+
+    A None value (a cost without a known price) is left out of the sum and counted by
+    `_unknown`; the total is None only when the field is set and no value is known.
+    """
 
     def aggregate(records: list[Record]) -> float | int | None:
         values = [r[field] for r in records if field in r]
-        if any(value is None for value in values):
+        known = [value for value in values if value is not None]
+        if values and not known:
             return None
-        total = sum(values)
+        total = sum(known)
         return round(total, 6) if isinstance(total, float) else total
 
     return aggregate
+
+
+def _unknown(field: str) -> Aggregator:
+    """How many records have the field set to None."""
+    return lambda records: sum(1 for r in records if field in r and r[field] is None)
 
 
 def _percentile(field: str, q: float) -> Aggregator:
@@ -204,9 +214,11 @@ ANSWER_AGGREGATORS: dict[str, Aggregator] = {
     "input_tokens": _total("input_tokens"),
     "output_tokens": _total("output_tokens"),
     "cost_usd": _total("cost_usd"),
+    "cost_unknown": _unknown("cost_usd"),  # answers by a model without a known price
     "judge_input_tokens": _total("judge_input_tokens"),
     "judge_output_tokens": _total("judge_output_tokens"),
     "judge_cost_usd": _total("judge_cost_usd"),
+    "judge_cost_unknown": _unknown("judge_cost_usd"),
     "errors": _count("error"),
     "judge_errors": _count("judge_error"),
 }

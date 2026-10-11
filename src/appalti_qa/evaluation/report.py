@@ -53,6 +53,13 @@ def _usd(value: Any) -> str:
     return "n/a" if value is None else f"${value:.4f}"
 
 
+def _cost(total: Any, unknown: Any) -> str:
+    """A cost total, noting how many calls it leaves out for lack of a price."""
+    if not unknown:
+        return _usd(total)
+    return f"{_usd(total)} ({unknown} without a known price, not included)"
+
+
 def _cell(value: Any) -> str:
     return " ".join(str(value).split()).replace("|", "\\|")
 
@@ -196,8 +203,8 @@ def _answer_section(results: Mapping[str, Any]) -> list[str]:
             f"{_int(o.get('latency_p50_ms'))} / {_int(o.get('latency_p95_ms'))}",
         ),
         ("Tokens in / out", f"{_int(o.get('input_tokens'))} / {_int(o.get('output_tokens'))}"),
-        ("Cost of answers", _usd(o.get("cost_usd"))),
-        ("Cost of judging", _usd(o.get("judge_cost_usd"))),
+        ("Cost of answers", _cost(o.get("cost_usd"), o.get("cost_unknown"))),
+        ("Cost of judging", _cost(o.get("judge_cost_usd"), o.get("judge_cost_unknown"))),
     ]
     review = sorted(
         (item for item in results.get("items", []) if _needs_review(item)),

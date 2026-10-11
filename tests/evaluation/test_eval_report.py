@@ -9,7 +9,6 @@ from appalti_qa.evaluation.dataset import EvalItem
 from appalti_qa.evaluation.judge import OverlapJudge
 from appalti_qa.evaluation.report import render_comparison, render_report, write_results
 from appalti_qa.evaluation.runner import (
-    CachedRetriever,
     dataset_summary,
     new_run_id,
     run_answer_eval,
@@ -32,22 +31,6 @@ def answer_results(items: list[EvalItem], stub_answer: Callable, stub_retriever:
         config=config,
         now=NOW,
     )
-
-
-def test_cached_retriever(stub_retriever: Callable, items: list[EvalItem]) -> None:
-    calls: list[int] = []
-
-    def counting(question: str, at_date: date, k: int) -> list:
-        calls.append(k)
-        return stub_retriever(question, at_date, k)
-
-    cached = CachedRetriever(counting, depth=10)
-    question, day = items[0].question, items[0].vigenza
-    assert [h.unit_key for h in cached(question, day, 2)] == ["50/2", "50/1"]
-    assert len(cached(question, day, 10)) == 3
-    cached(question, day, 20)
-    cached(question, date(2030, 1, 1), 1)
-    assert calls == [10, 20, 10]
 
 
 def test_run_ids() -> None:
@@ -139,6 +122,14 @@ def test_render_report(answer_results: dict) -> None:
     assert "| Correctness | 50.0% |" in report
     assert "Motivo con \\| barra su due righe" in report
     assert "| Q002 | temporal | 0.000 | 50/1/b | 1/1 |" in report
+
+
+def test_render_report_unknown_cost(answer_results: dict) -> None:
+    overall = answer_results["answer"]["overall"]
+    assert "| Cost of answers | $0.0080 |" in render_report(answer_results)
+    overall.update(cost_usd=0.5, cost_unknown=3)
+    report = render_report(answer_results)
+    assert "| Cost of answers | $0.5000 (3 without a known price, not included) |" in report
 
 
 def test_render_comparison(answer_results: dict) -> None:

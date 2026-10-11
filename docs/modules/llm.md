@@ -39,7 +39,9 @@ count against it on both providers.
 
 1. Validate the question (Italian `ValueError` if empty or longer than `MAX_QUESTION_CHARS`).
 2. Retrieve `DEFAULT_TOP_K` units in force at the date (`RETRIEVAL_MODE`, hybrid by default).
-3. No hits, or best score below `MIN_RELEVANCE_SCORE`: abstain without calling the model.
+3. No hits, or best score below `MIN_RELEVANCE_SCORE`: abstain without calling the model. The
+   threshold defaults to 0.0 and is not calibrated yet; since hybrid and semantic search return
+   `k` hits once the corpus is embedded, abstention is in practice decided by the model.
 4. Generate; drop citations to unknown sources and stray markers; abstain when the model answers
    `NON_TROVATO` or no valid citation remains.
 5. Abstained answers keep their sources for transparency. `latency_ms` covers retrieval and
