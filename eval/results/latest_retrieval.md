@@ -1,6 +1,6 @@
-# Evaluation report `20261011T182950Z_retrieval`
+# Evaluation report `20261011T212153Z_retrieval`
 
-Created 2026-10-11T18:29:50Z. Dataset `eval/dataset.yaml`: 81 questions evaluated (selection: all); 0 of 81 questions in the file are verified.
+Created 2026-10-11T21:21:53Z. Dataset `eval/dataset.yaml`: 81 questions evaluated (selection: all); 0 of 81 questions in the file are verified.
 
 > **Draft questions included.** 81 of the evaluated questions are not verified yet (status `bozza`): the numbers are indicative and not for publication.
 
@@ -9,7 +9,7 @@ Created 2026-10-11T18:29:50Z. Dataset `eval/dataset.yaml`: 81 questions evaluate
 | Setting | Value |
 | --- | --- |
 | retrieval_mode | hybrid |
-| modes | ['lexical', 'semantic', 'hybrid'] |
+| modes | ['lexical', 'semantic', 'hybrid', 'rerank'] |
 | k_values | [1, 3, 5, 10] |
 | embedding_model | intfloat/multilingual-e5-base |
 | split | all |
@@ -18,6 +18,8 @@ Created 2026-10-11T18:29:50Z. Dataset `eval/dataset.yaml`: 81 questions evaluate
 | lexical_weight | 1.0 |
 | fusion_depth | 4 |
 | rrf_k | 60 |
+| rerank_model | claude-haiku-5-5 |
+| rerank_pool | 40 |
 
 ## Retrieval
 
@@ -28,6 +30,7 @@ Questions with expected references only, each at its own reference date. Comma l
 | lexical | 73 | 19.2% | 40.4% | 54.6% | 75.1% | 0.355 | 61.0% | 78.8% | 0.387 |
 | semantic | 73 | 53.4% | 71.9% | 79.9% | 90.0% | 0.684 | 88.4% | 93.2% | 0.783 |
 | hybrid | 73 | 66.0% | 81.7% | 83.6% | 88.6% | 0.786 | 87.0% | 91.8% | 0.826 |
+| rerank | 73 | 84.7% | 97.7% | 97.7% | 97.7% | 0.957 | 99.3% | 99.3% | 0.970 |
 
 ### Retrieval by kind (hybrid)
 

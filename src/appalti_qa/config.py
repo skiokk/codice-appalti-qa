@@ -58,7 +58,7 @@ class Settings(BaseSettings):
     min_relevance_score: float = 0.0
 
     # Reranking of the sources of an answer (decision 9); search alone is never reranked
-    rerank_provider: RerankProvider = "none"
+    rerank_provider: RerankProvider = "anthropic"  # adopted by decision 9; needs a key
     rerank_model: str = "claude-haiku-5-5"
     rerank_pool: int = Field(default=40, gt=0, le=100)  # candidates the reranker reads
     rerank_max: int = Field(default=15, gt=0)  # units the reranker may put first
@@ -91,7 +91,6 @@ class Settings(BaseSettings):
         if requested == "fake" or self.api_key(requested) is None:
             return "fake"
         return requested
-
 
     def reranks(self) -> bool:
         """True when answers rerank their sources: a rerank provider is set and has a key."""

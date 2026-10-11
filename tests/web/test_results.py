@@ -106,14 +106,20 @@ def test_config_values() -> None:
     view = results_view(
         {
             "dataset": {"size": 120, "verified": 80, "evaluated": 80},
-            "config": {"provider": None, "modes": ["lexical", "hybrid"], "k_values": [1, 5]},
+            "config": {
+                "provider": None,
+                "modes": ["lexical", "hybrid", "rerank"],
+                "k_values": [1, 5],
+                "rerank_model": "claude-haiku-5-5",
+            },
         }
     )
     assert view.evaluated == "80"
     assert view.config == [
         ("Fornitore del modello", "n/d"),
-        ("Ricerche confrontate", "lessicale, ibrida"),
+        ("Ricerche confrontate", "lessicale, ibrida, ibrida riordinata da un modello"),
         ("Valori di k", "1, 5"),
+        ("Modello di riordino delle fonti", "claude-haiku-5-5"),
     ]
 
 

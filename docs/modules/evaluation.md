@@ -118,6 +118,11 @@ answering provider, since an `Answer` carries only the model that wrote it and t
 Every reported attempt is priced, so a decline before any output that turns out not to be billed
 is counted anyway, and the total is an upper bound in that case.
 
+Reranking (`--rerank`) is a separate call to Claude Haiku 5.5 per question. In an answer run its
+tokens are priced with the answer they served; every run with reranking also records
+`rerank` (model, pool, calls, failures, and the tokens and cost not attributed to an answer, such
+as those of the retrieval metrics).
+
 Known prices are summed; a call that used an Anthropic model missing from the table is counted in
 `cost_unknown` instead of adding a wrong number, and the total is `null` only when no answer has a
 known price.

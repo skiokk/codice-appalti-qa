@@ -245,4 +245,29 @@ candidates can judge relevance in a way that rank fusion of similarity scores ca
 idea of adding the passage list comes from those results. This configuration was not selected
 among alternatives on it, but a confirmation on new questions is still needed.
 
-**Result.** Pending.
+**Result.** The rule holds in both runs, so **reranking is the default for answers**
+(`RERANK_PROVIDER=anthropic`; without an API key answers keep plain hybrid search).
+
+| Run | Dev R@5 | Dev MRR | Test R@5 | Test MRR | All 73 R@5 | All 73 R@10 | All 73 MRR |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Hybrid (baseline) | 0.820 | 0.775 | 0.852 | 0.797 | 0.836 | 0.886 | 0.786 |
+| Reranked, run 1 | 0.964 | 0.919 | 0.954 | 0.976 | 0.959 | 0.977 | 0.947 |
+| Reranked, run 2 | 0.973 | 0.926 | 0.972 | 0.982 | 0.973 | 0.977 | 0.953 |
+
+- In run 1, 20 questions rank an expected comma higher than the baseline, 50 the same and 3
+  lower (Q001, Q049, Q055: from first to second place, with the expected comma still in the
+  top 5). Recall@1 rises from 0.660 to 0.833 (run 1) and 0.847 (run 2); the share of questions
+  with an expected comma in the top 5 from 88% to 99% and 100%.
+- By kind (run 2): answerable recall@5 0.885 → 1.000, temporal 0.833 → 1.000, multi-reference
+  0.556 → 0.778 (MRR 0.731 → 0.944).
+- In a spot check, the direct-award question that motivated decisions 8 and 9 ranks 50/1 first
+  (outside the baseline top 10; tenth in the candidate pool).
+- 146 calls, no failure. A call reads about 16,000 input tokens and writes about 200: $0.0018
+  per question at list prices, $0.25 for both runs.
+- The two runs differ by a few ranks (the model is not deterministic); the gap to the baseline
+  is an order of magnitude larger. Three later runs on all 73 questions agree: MRR 0.946 and
+  0.957 (`eval/results/20261011T205507Z_retrieval`, `20261011T212153Z_retrieval`) and 0.958 in
+  the answer run.
+
+Results: `eval/results/rerank/` (`20261011T203936Z` and `20261011T204123Z` for run 1 on dev and
+test, `20261011T204301Z` and `20261011T204453Z` for run 2).

@@ -44,6 +44,11 @@ validity is that of the text, across such rows; `history` folds them into the te
   (default 1, plain RRF). Units explicitly cited in the question ("art. 50, comma 1, lett. b)")
   are pinned first.
 
+`candidate_pool(query, date, size)` serves the reranked answers (decision 9): three lists of
+`size` units (lexical, semantic on whole units, semantic on passages without hubness correction)
+fused by plain RRF, with cited units pinned first (score at least `PINNED_SCORE`). It embeds the
+query once. It is not a search mode: `search` and `GET /api/v1/search` never call a model.
+
 ## Embedding
 
 `appalti-qa embed` embeds every version without an embedding (or with one from another model),

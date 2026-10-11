@@ -23,7 +23,7 @@
       <section id="metodo" class="mt-5">
         <h2>Metodo</h2>
         <ol>
-          <li><strong>Ricerca delle fonti.</strong> Tra i commi in vigore alla data scelta, il sistema cerca quelli pertinenti combinando una ricerca per parole (full-text in italiano) e una ricerca per significato (embedding calcolati localmente). Gli articoli citati esplicitamente nella domanda hanno la precedenza.</li>
+          <li><strong>Ricerca delle fonti.</strong> Tra i commi in vigore alla data scelta, il sistema cerca quelli pertinenti combinando una ricerca per parole (full-text in italiano) e una ricerca per significato (embedding calcolati localmente). Gli articoli citati esplicitamente nella domanda hanno la precedenza.{% if settings.reranks() %} Per le risposte, un modello linguistico più piccolo ({{ settings.rerank_model }}) rilegge una quarantina di commi candidati e mette per primi quelli utili a rispondere.{% endif %}</li>
           <li><strong>Risposta con citazioni.</strong> Un modello linguistico riceve soltanto i commi recuperati e deve fondare ogni affermazione su di essi, indicando i passaggi citati. Modello in uso: {{ model }} ({{ provider }}).</li>
           <li><strong>Astensione.</strong> Se le fonti non contengono la risposta, il sistema lo dichiara invece di rispondere.</li>
           <li><strong>Valutazione.</strong> La qualità è misurata su un insieme di domande con risposte attese: i risultati sono nella pagina <a href="/valutazione">Valutazione</a>.</li>

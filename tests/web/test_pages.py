@@ -5,6 +5,7 @@ from pathlib import Path
 import lxml.html
 import psycopg
 from fastapi.testclient import TestClient
+from pydantic import SecretStr
 
 from appalti_qa.llm import LLMError
 from appalti_qa.models import UnitVersion
@@ -308,6 +309,14 @@ def test_about_page(client: TestClient) -> None:
         assert page.get_element_by_id(section) is not None
     assert "Non è un parere legale" in page.text_content()
     assert "Normattiva" in page.text_content()
+
+
+def test_about_page_mentions_reranking_only_when_active(make_client) -> None:
+    sentence = "rilegge una quarantina di commi candidati"
+    assert sentence not in make_client().get("/informazioni").text  # no key: off
+    reranking = make_client(rerank_provider="anthropic", anthropic_api_key=SecretStr("k"))
+    text = reranking.get("/informazioni").text
+    assert sentence in text and "claude-haiku-5-5" in text
 
 
 def test_unknown_page_is_italian_404(client: TestClient) -> None:

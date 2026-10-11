@@ -619,7 +619,9 @@ def answer_question(question: str, at_date: date, settings: Settings | None = No
 1. Strip the question; raise `ValueError` (Italian message) if empty or longer than
    `settings.max_question_chars`.
 2. Retrieve `k or settings.default_top_k` hits (default retriever: `retrieval.search` with
-   `mode or settings.retrieval_mode`, imported lazily).
+   `mode or settings.retrieval_mode`, imported lazily; for hybrid answers with
+   `settings.reranks()`, `answer.rerank.RerankingRetriever` over `retrieval.candidate_pool` and
+   `llm.reranker.AnthropicReranker`, decision 9).
 3. No hits, or best score below `settings.min_relevance_score` → abstain without calling the LLM.
 4. Otherwise `provider.generate(...)`; drop citations whose `source_index` is out of range; abstain
    when the text is `ABSTAIN_TOKEN` (or starts with it) or no valid citation remains.
@@ -773,8 +775,9 @@ any `--publish` that retrieves with semantic or hybrid search is refused (exit 2
 written) when `EMBEDDING_MODEL=fake` or fewer than 99% of the versions searchable on the
 evaluated dates are embedded with the configured model (`embedding_coverage`), so placeholder
 numbers are never published. In an answer run each question is
-answered through `answer_question` with the same `search(question, date, k, mode)` call as the
-app; the retrieval metrics come from separate calls at the largest cutoff.
+answered through `answer_question` with the same retrieval as the app (`search(question, date,
+k, mode)`, or the reranked pool when reranking is on); the retrieval metrics come from separate
+calls at the largest cutoff. `retrieval --rerank` adds the reranked retrieval as mode `rerank`.
 The xlsx is for a human reviewer: Italian column headers, wrapped text, frozen header row, an
 `Esito` dropdown (`OK`, `Da correggere`, `Scartare`) and a `Correzione` column; on import, edited
 rows become `corretta`, `OK` rows `verificata` and `Scartare` rows `scartata` (kept, never

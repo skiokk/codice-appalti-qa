@@ -87,8 +87,15 @@ _CONFIG_LABELS = {
     "embedding_model": "Modello di embedding",
     "judge": "Giudice della correttezza",
     "judge_model": "Modello del giudice",
+    "rerank_model": "Modello di riordino delle fonti",
+    "rerank_pool": "Candidati riordinati",
 }
-_MODE_LABELS = {"lexical": "lessicale", "semantic": "semantica", "hybrid": "ibrida"}
+_MODE_LABELS = {
+    "lexical": "lessicale",
+    "semantic": "semantica",
+    "hybrid": "ibrida",
+    "rerank": "ibrida riordinata da un modello",
+}
 
 
 @dataclass(frozen=True, slots=True)

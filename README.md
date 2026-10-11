@@ -31,6 +31,10 @@ sources do not answer the question. It also publishes how often it gets things r
   lett. b)" are recognised and pinned first. Long commi and tables are also embedded as
   sub-passages (one per lettera, or overlapping windows); passage-level search is measured and
   available, but not the default, because it did not beat the baseline on held-out questions.
+- **Reranking.** For answers, 40 candidates from lexical, unit-level and passage-level search are
+  reordered by Claude Haiku 5.5, which reads them and puts the useful ones first (structured
+  output, about $0.002 per question). On the 36 held-out questions it raises MRR from 0.797 to
+  0.976-0.982 and puts an expected comma in the top 5 for 35 and 36 of them in two runs.
 - **Cited answers.** Claude through the Anthropic Messages API with native citations: each comma
   is a document, and the API returns the exact quoted span. Open-weight models on Groq can be
   compared, and a deterministic fake provider runs everything offline with no API key.
@@ -59,6 +63,8 @@ flowchart LR
     U(["User:<br/>question + date"]) --> W["web<br/>FastAPI · htmx · Bootstrap Italia"]
     W --> A["answer<br/>validate · retrieve · generate · abstain"]
     A --> R["retrieval<br/>lexical + semantic → RRF<br/>in force at the date"]
+    A --> K["rerank<br/>Claude Haiku 5.5<br/>40 candidates"]
+    K --> R
     R --> DB
     A --> L{"LLM provider"}
     L --> C["Claude<br/>native citations"]
@@ -73,8 +79,8 @@ flowchart LR
 | --- | --- |
 | `appalti_qa.ingest` | download, parse and version the Normattiva snapshots; load PostgreSQL |
 | `appalti_qa.retrieval` | embeddings, lexical / semantic / hybrid search, lookups, version history |
-| `appalti_qa.llm` | Anthropic, Groq and fake providers behind one protocol |
-| `appalti_qa.answer` | the answer flow: validation, retrieval, generation, abstention |
+| `appalti_qa.llm` | Anthropic, Groq and fake providers behind one protocol; the reranker |
+| `appalti_qa.answer` | the answer flow: validation, retrieval and reranking, generation, abstention |
 | `appalti_qa.web` | Italian web interface and JSON API |
 | `appalti_qa.evaluation` | dataset checks, metrics, judges, reports, xlsx review |
 
@@ -137,28 +143,30 @@ different versions of the exactly dated text.
 > `eval export-xlsx` and `eval import-xlsx` handle the review round trip; the workbook for the
 > expert is written to `eval/review/` (not committed).
 
-**Retrieval** (no LLM). Each question is searched at its own date, over the 73 questions with
-expected references. Comma level means the retrieved unit matches an expected reference
-(`50/1/b` is found by unit `50/1`); article level means the right article was retrieved.
+**Retrieval.** Each question is searched at its own date, over the 73 questions with expected
+references. Comma level means the retrieved unit matches an expected reference (`50/1/b` is found
+by unit `50/1`); article level means the right article was retrieved. The first three modes use no
+language model; the last is how answers retrieve their sources (see Reranking below).
 
-| Mode (v1, default) | Recall@1 | Recall@5 | Recall@10 | MRR | Article recall@5 | Article recall@10 | Article MRR |
+| Mode | Recall@1 | Recall@5 | Recall@10 | MRR | Article recall@5 | Article recall@10 | Article MRR |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | Lexical (Italian full-text) | 0.192 | 0.546 | 0.751 | 0.355 | 0.610 | 0.788 | 0.387 |
 | Semantic (e5-base) | 0.534 | 0.799 | 0.899 | 0.684 | 0.884 | 0.931 | 0.783 |
-| **Hybrid (RRF, default)** | 0.660 | 0.836 | 0.886 | 0.786 | 0.870 | 0.918 | 0.826 |
+| Hybrid (RRF, default for search) | 0.660 | 0.836 | 0.886 | 0.786 | 0.870 | 0.918 | 0.826 |
+| **Reranked by Claude Haiku 5.5 (default for answers)** | 0.847 | 0.977 | 0.977 | 0.957 | 0.993 | 0.993 | 0.970 |
 
-Run `20261011T182950Z_retrieval` (published; identical to the v1 run `20261011T175038Z_retrieval`,
-since the defaults did not change), on the exactly dated corpus with the repaired comma numbering
-and point-in-time headings: 73 questions, all drafts, k = 1, 3, 5, 10. The repair added commi
-41/9-41/15 and 62/8-62/18 before 2024-12-28; this reordered some lower-ranked candidates (mostly
-of the two questions dated 2024-06-01) and moved a single figure, the hybrid article MRR (0.827
-before). The full
-report, with results by kind and by topic, is in
-[eval/results/latest_retrieval.md](eval/results/latest_retrieval.md). With
-hybrid search, 71% of questions get an expected comma in first place (hit@1) and 88% within the
-top 5 (hit@5). Semantic search alone has the best recall@10. The weakest group is the
-multi-reference questions (hybrid recall@5 0.556 over 9 questions). Only 4 questions cite an
-article explicitly, so reference pinning barely affects these numbers.
+Run `20261011T212153Z_retrieval` (published), on the exactly dated corpus with the repaired
+comma numbering and point-in-time headings: 73 questions, all drafts, k = 1, 3, 5, 10. The first
+three rows are identical to the v1 run `20261011T175038Z_retrieval` except the hybrid article MRR
+(0.827 before): the numbering repair added commi 41/9-41/15 and 62/8-62/18 before 2024-12-28 and
+reordered some lower-ranked candidates. The reranked row is a further run of the configuration
+measured in decision 9 (another, `20261011T205507Z_retrieval`, gave MRR 0.946 and recall@5
+0.973). The full report, with results by kind and by topic, is in
+[eval/results/latest_retrieval.md](eval/results/latest_retrieval.md). With hybrid search 71% of
+questions get an expected comma in first place (hit@1) and 88% within the top 5 (hit@5); with
+reranking, 92% and 100%. The weakest group is the multi-reference questions (recall@5 0.556
+hybrid, 0.815 reranked, over 9 questions). Only 4 questions cite an article explicitly, so
+reference pinning barely affects these numbers.
 
 **Retrieval experiment: passage-level embeddings** ([decision 8](docs/decisions.md)). e5-base is
 weak on long, list-structured commi: for "Fino a che importo posso affidare direttamente un
@@ -190,12 +198,58 @@ small to choose among 60 variants without overfitting. The full grid is in
 [eval/results/sweeps](eval/results/sweeps), and `appalti-qa eval sweep --all --split dev` (or
 `test`) reproduces it.
 
-**Answers** (correctness, citation precision and recall, abstention accuracy, latency, cost):
-*pending: run with an API key*
-(`appalti-qa eval answers --provider anthropic --judge-provider anthropic --all --publish`).
-Without a key the fake provider and a word-overlap judge produce placeholder numbers only, and
-`--publish` refuses to publish them. Answers retrieve their sources exactly as the app does; the
-retrieval metrics of the run come from separate calls. Costs use list prices; an answer that
+**Reranking** ([decision 9](docs/decisions.md)). For answers, a wider pool of 40 candidates
+(lexical, unit-level and passage-level lists fused by RRF) is reordered by Claude Haiku 5.5, which
+reads each candidate and returns the useful ones, most useful first. One configuration was fixed
+and committed before any measurement, with the same adoption rule as above, and measured in two
+runs because the model is not deterministic. It holds in both, so reranking is the default for
+answers (`GET /api/v1/search` stays plain hybrid search, which costs nothing).
+
+| Retrieval | Dev R@5 | Dev MRR | Test R@5 | Test MRR | All 73 R@1 | All 73 R@5 | All 73 MRR |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Hybrid (no model) | 0.820 | 0.775 | 0.852 | 0.797 | 0.660 | 0.836 | 0.786 |
+| **Reranked, run 1** | 0.964 | 0.919 | 0.954 | 0.976 | 0.833 | 0.959 | 0.947 |
+| **Reranked, run 2** | 0.973 | 0.926 | 0.972 | 0.982 | 0.847 | 0.973 | 0.953 |
+
+20 questions improve, 3 move from first to second place, and in a spot check the example query
+above ranks 50/1 first. Multi-reference questions remain the hardest (recall@5 0.556 → 0.778).
+Each call reads about 16,000 tokens: $0.0018 per question at list prices. The test set had
+already been used for decision 8, so new questions are needed to confirm the size of the gain.
+Results are in [eval/results/rerank](eval/results/rerank).
+
+**Answers.** Claude Opus 5.5 (effort medium) answers all 81 questions from 8 reranked sources;
+Claude Opus 5.5 also grades each answer against the expected one with an Italian rubric
+(`correct` 1, `partial` 0.5, `wrong` 0).
+
+| Kind | n | Correctness | Citation precision | Citation recall | Abstention accuracy |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Answerable | 52 | 0.971 | 0.522 | 1.000 | 1.000 |
+| Temporal | 12 | 0.958 | 0.583 | 1.000 | 1.000 |
+| Unanswerable | 8 | 1.000 | - | - | 0.625 |
+| Multi-reference | 9 | 0.833 | 0.576 | 0.778 | 1.000 |
+| **All** | **81** | **0.957** | **0.538** | **0.973** | **0.963** |
+
+Run `20261011T205828Z_anthropic_claude-opus-5-5` (published, all 81 questions, drafts). No answer
+is graded wrong; 7 are partial, each omitting a condition the expected answer includes (for
+example the 50% cap on contract changes in Q078). Reading the numbers:
+
+- *Citation precision* counts a citation as right only when it matches an expected reference.
+  The expected lists hold the minimum needed, and the model also cites related commi (for the
+  direct-award question, 50/1 and the 62/6 rule on maintenance works), so the low figure
+  measures extra citations more than wrong ones.
+- *Abstention*: 3 of the 8 unanswerable questions get a partial answer instead of "the sources do
+  not allow an answer". Each says what the Code does not cover (the regional platform, who signs
+  the determina, the criminal penalty) and quotes only what it does, as the prompt asks; the
+  judge rates all three correct, but they are not abstentions.
+- *Self-grading*: the judge is the same model as the answerer, and the expected answers are
+  drafts, so the expert review may move these numbers.
+- *Latency* (retrieval, reranking and generation): median 7.8 s, 95th percentile 13.5 s.
+- *Cost* at list prices: $3.09 for the answers including reranking ($0.038 per answer), $1.01
+  for the judge.
+
+Answers retrieve their sources exactly as the app does; the retrieval metrics of the run come
+from separate calls. Without a key the fake provider and a word-overlap judge produce placeholder
+numbers only, and `--publish` refuses to publish them. Costs use list prices; an answer that
 the API served through a fallback model is charged for every attempt at its own model's rates,
 and an answer involving a model without a known price is counted apart instead of hiding the
 total.
@@ -284,6 +338,8 @@ Environment variables, also read from `.env` (see [.env.example](.env.example)):
 | `DEFAULT_TOP_K` / `RRF_K` | `8` / `60` | sources per answer, RRF constant |
 | `FUSION_DEPTH` / `LEXICAL_WEIGHT` | `4` / `1.0` | hybrid fuses two lists of `FUSION_DEPTH * k`; weight of the lexical list in RRF |
 | `SEMANTIC_GRANULARITY` / `HUBNESS_WEIGHT` | `unit` / `0.0` | `passage`: a version scores its best sub-passage, less `HUBNESS_WEIGHT` times its hub score (see decision 8) |
+| `RERANK_PROVIDER` / `RERANK_MODEL` | `anthropic` / `claude-haiku-5-5` | answers rerank their sources with this model when `ANTHROPIC_API_KEY` is set (decision 9); `none` turns it off; search alone is never reranked |
+| `RERANK_POOL` / `RERANK_MAX` | `40` / `15` | candidates the reranker reads (lexical, unit and passage lists fused) and how many it may put first |
 | `MIN_RELEVANCE_SCORE` | `0.0` | abstain without calling the model when the best source scores below this (not calibrated yet) |
 | `MAX_QUESTION_CHARS` | `500` | question length limit |
 | `RATE_LIMIT_PER_IP_PER_HOUR` / `RATE_LIMIT_GLOBAL_PER_DAY` | `20` / `500` | answering limits (0 disables) |

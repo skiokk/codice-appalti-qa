@@ -356,18 +356,20 @@ def _cmd_retrieval(args: argparse.Namespace) -> int:
         return 2
     modes = list(dict.fromkeys(args.mode or MODES))
     primary = settings.retrieval_mode if settings.retrieval_mode in modes else modes[0]
+    evaluated = [*modes, RERANK] if args.rerank else modes
     config = {
         "provider": None,
         "model": None,
         "retrieval_mode": primary,
-        "modes": modes,
+        "modes": evaluated,
         "k_values": list(args.k),
         "embedding_model": settings.embedding_model,
         "judge": None,
         "split": args.split,
         **{name: getattr(settings, name) for name in RETRIEVAL_SETTINGS},
     }
-    evaluated = [*modes, RERANK] if args.rerank else modes
+    if args.rerank:
+        config.update(rerank_model=settings.rerank_model, rerank_pool=settings.rerank_pool)
     with _open_db() as conn:
         refusal = _embedding_refusal(settings, evaluated, items, conn) if args.publish else None
         if refusal:
@@ -521,17 +523,17 @@ def _cmd_answers(args: argparse.Namespace) -> int:
     judge = get_judge(judge_settings)
     mode = args.mode or settings.retrieval_mode
     k = args.k or settings.default_top_k
+    reranks = mode == "hybrid" and settings.reranks()
     with _open_db() as conn:
-        refusal = _embedding_refusal(settings, [mode], items, conn) if args.publish else None
+        searched = [mode, RERANK] if reranks else [mode]
+        refusal = _embedding_refusal(settings, searched, items, conn) if args.publish else None
         if refusal:
             print(refusal, file=sys.stderr)
             return 2
         # Answers retrieve exactly as the app does (same k and mode, reranked when the app
         # reranks); the retrieval metrics make their own deeper calls, since the fused ranking
         # depends on the requested depth.
-        reranked = (
-            _rerank_retriever(conn, settings) if mode == "hybrid" and settings.reranks() else None
-        )
+        reranked = _rerank_retriever(conn, settings) if reranks else None
         retrieve = reranked or _search_retriever(mode, conn, settings)
         backend = _answer_backend(
             settings,

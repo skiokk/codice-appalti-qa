@@ -335,6 +335,8 @@ def test_retrieval_rerank_adds_a_mode_with_its_cost(
     (path,) = tmp_path.glob("*_retrieval.json")
     results = json.loads(path.read_text())
     assert results["retrieval_by_mode"].keys() == {"hybrid", "rerank"}
+    assert results["config"]["modes"] == ["hybrid", "rerank"]
+    assert results["config"]["rerank_model"] == "claude-haiku-5-5"
     assert results["retrieval"] == results["retrieval_by_mode"]["hybrid"]  # primary unchanged
     assert len(stub_rerank.questions) == 3  # the questions with expected refs
     assert results["rerank"] == {
@@ -392,6 +394,29 @@ def test_answers_rerank_their_sources_and_count_the_cost(
     assert stub_backends == []  # no plain search retriever: answers rerank like the app
     assert results["rerank"]["calls"] == 1  # the stub answers do not retrieve; the metrics do
     assert results["rerank"]["failures"] == 0
+
+
+def test_reranked_answers_publish_checks_passage_embeddings(
+    tmp_path: Path,
+    dataset_path: Path,
+    stub_backends: list[str],
+    stub_rerank: _ScriptedReranker,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture,
+) -> None:
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+    get_settings.cache_clear()
+    monkeypatch.setattr(eval_cli, "get_judge", lambda settings: OverlapJudge())  # no network
+    monkeypatch.setattr(
+        eval_cli,
+        "embedding_coverage",
+        lambda conn, model, days, *, passages=False: (0, 2811) if passages else (2811, 2811),
+    )
+    argv = ["answers", "--dataset", str(dataset_path), "--out", str(tmp_path), "--publish"]
+    argv += ["--provider", "anthropic", "--judge-provider", "anthropic", "--rerank"]
+    assert cli_main(argv) == 2
+    assert "have passage embeddings from" in capsys.readouterr().err
+    assert not (tmp_path / "latest.json").exists()
 
 
 def test_answers_command(

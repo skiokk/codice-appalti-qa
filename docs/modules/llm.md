@@ -48,6 +48,9 @@ count against it on both providers.
 
 1. Validate the question (Italian `ValueError` if empty or longer than `MAX_QUESTION_CHARS`).
 2. Retrieve `DEFAULT_TOP_K` units in force at the date (`RETRIEVAL_MODE`, hybrid by default).
+   With `RERANK_PROVIDER=anthropic` and a key, hybrid answers instead take `RERANK_POOL`
+   candidates from `retrieval.candidate_pool` and let `RERANK_MODEL` reorder them (see
+   Reranking).
 3. No hits, or best score below `MIN_RELEVANCE_SCORE`: abstain without calling the model. The
    threshold defaults to 0.0 and is not calibrated yet; since hybrid and semantic search return
    `k` hits once the corpus is embedded, abstention is in practice decided by the model.
@@ -55,3 +58,18 @@ count against it on both providers.
    `NON_TROVATO` or no valid citation remains.
 5. Abstained answers keep their sources for transparency. `latency_ms` covers retrieval and
    generation.
+
+## Reranking
+
+`AnthropicReranker` (`llm/reranker.py`, decision 9) sends Claude Haiku 5.5 the question, the date
+and the numbered candidates (label, heading, text cut at 3,000 characters) and asks, with
+structured output (`{"commi": [n, ...]}`), for the useful ones, most useful first, at most
+`RERANK_MAX`. The request sets no fallback list, sampling parameters or thinking budget, which
+Claude Haiku 5.5 rejects. Numbers out of range, repeated or not integers are dropped.
+
+`answer.rerank.RerankingRetriever` puts the units cited in the question first, then the model's
+list, then the other candidates in pool order, and returns the first `k`. A failed or declined
+call (`LLMError`) keeps the pool order and is counted in `failures`; `take()` returns the tokens
+used, which the evaluation prices with the answer. The usage log (`qa_log`) records only the
+answering model's tokens: reranking costs about $0.002 per question (about 17,000 input and 500
+output tokens).
