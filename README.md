@@ -64,7 +64,7 @@ flowchart LR
     L --> F["Fake<br/>offline, deterministic"]
     V["evaluation<br/>dataset · metrics · judge · report"] --> A
     V --> R
-    V -. "eval/results/latest.json" .-> W
+    V -. "eval/results/latest.json<br/>latest_retrieval.json" .-> W
 ```
 
 | Package | Role |
@@ -158,11 +158,18 @@ article explicitly, so reference pinning barely affects these numbers.
 (`appalti-qa eval answers --provider anthropic --judge-provider anthropic --all --publish`).
 Without a key the fake provider and a word-overlap judge produce placeholder numbers only, and
 `--publish` refuses to publish them. Answers retrieve their sources exactly as the app does; the
-retrieval metrics of the run come from separate calls. Costs use list prices; an answer served by
-a model without a known price is counted apart instead of hiding the total.
+retrieval metrics of the run come from separate calls. Costs use list prices; an answer that
+the API served through a fallback model is charged for every attempt at its own model's rates,
+and an answer involving a model without a known price is counted apart instead of hiding the
+total.
 
 Every run is written to `eval/results/` as JSON and markdown. Only a run made with `--publish`
-replaces `latest.json`, the one shown on the app's *Valutazione* page.
+is published: an answer run replaces `latest.json`, the one shown on the app's *Valutazione*
+page; a retrieval run replaces `latest_retrieval.json` and also `latest.json` unless that holds
+an answer run, so a retrieval run never hides published answer numbers (the page then takes the
+comparison of the search modes from `latest_retrieval.json`). Publishing is refused for fake
+providers, judges or embedder, and for semantic or hybrid runs on a corpus not fully embedded
+with the configured model.
 
 ## Quick start
 
@@ -197,7 +204,8 @@ python3.12 -m venv .venv
 .venv/bin/appalti-qa eval validate --db
 .venv/bin/appalti-qa eval retrieval --all          # lexical, semantic and hybrid
 .venv/bin/appalti-qa eval answers --all            # fake provider unless a key is set
-# add --publish to update eval/results/latest.json (refused for fake providers and judges)
+# add --publish to update eval/results/latest.json (refused for fake providers, judges or
+# embedder, or a corpus not fully embedded); retrieval --publish also writes latest_retrieval.json
 
 .venv/bin/ruff check . && .venv/bin/ruff format --check .
 .venv/bin/pytest                         # DB tests use a throwaway database on the compose server

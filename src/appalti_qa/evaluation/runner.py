@@ -14,6 +14,7 @@ from appalti_qa.evaluation.metrics import (
     DEFAULT_K_VALUES,
     AnswerFn,
     Retriever,
+    UsageFn,
     answer_metrics,
     retrieval_metrics,
 )
@@ -91,6 +92,7 @@ def run_answer_eval(
     dataset: dict[str, Any],
     config: dict[str, Any],
     k_values: Sequence[int] = DEFAULT_K_VALUES,
+    usage: UsageFn | None = None,
     now: datetime | None = None,
 ) -> dict[str, Any]:
     """Answer metrics, plus the retrieval metrics of `retrieve` when given.
@@ -98,10 +100,10 @@ def run_answer_eval(
     `config` must name the "provider" and "model"; they make up the run id. Questions are
     answered first, so each answer's latency includes its own retrieval; the retrieval metrics
     then call `retrieve` again at the depth of the largest cutoff, leaving the answers' retrieval
-    exactly as in production.
+    exactly as in production. `usage` prices each answer per model attempt (`answer_metrics`).
     """
     now = now or datetime.now(UTC)
-    answers = answer_metrics(items, answer, judge)
+    answers = answer_metrics(items, answer, judge, usage=usage)
     records = answers.pop("items")
     results = _header(
         new_run_id(config["provider"], config["model"], now=now), now, dataset, config

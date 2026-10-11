@@ -46,7 +46,7 @@ is legally correct, so a person still has to review each one.
 | `status` | `bozza` (draft), `verificata` (checked as is), `corretta` (checked after edits) or `scartata` (discarded by the reviewer: kept in the file, never evaluated) |
 | `notes` | caveats for the reviewer, amending act for temporal items |
 
-## Human verification workflow
+## Human review process
 
 1. **Export**: `appalti-qa eval export-xlsx review.xlsx` writes one row per question with Italian
    column headers, wrapped text and a frozen header row. With the database loaded, a

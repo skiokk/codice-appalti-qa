@@ -16,8 +16,22 @@ class LLMError(RuntimeError):
 
 
 @dataclass(frozen=True, slots=True)
+class ModelUsage:
+    """The tokens one model consumed in a call; input includes cache writes and reads."""
+
+    model: str
+    input_tokens: int
+    output_tokens: int
+
+
+@dataclass(frozen=True, slots=True)
 class Generation:
-    """The raw output of one provider call."""
+    """The raw output of one provider call.
+
+    `model` produced the returned text. `input_tokens` and `output_tokens` cover the whole call:
+    when a server-side fallback re-runs a declined request on another model, the call has several
+    attempts, each billed at its own model's rate, and `iterations` lists them in order.
+    """
 
     text: str  # with "[n]" markers, n = source_index + 1
     citations: list[Citation]
@@ -26,6 +40,12 @@ class Generation:
     input_tokens: int = 0
     output_tokens: int = 0
     stop_reason: str | None = None
+    iterations: tuple[ModelUsage, ...] = ()  # per-attempt usage, when the provider reports it
+
+    @property
+    def model_usage(self) -> tuple[ModelUsage, ...]:
+        """Tokens by model attempt: `iterations`, or the whole call on `model`."""
+        return self.iterations or (ModelUsage(self.model, self.input_tokens, self.output_tokens),)
 
 
 class LLMProvider(Protocol):
@@ -39,3 +59,32 @@ class LLMProvider(Protocol):
     def complete(self, system: str, prompt: str, *, max_tokens: int = 1024) -> Generation:
         """A plain completion without sources, e.g. for the evaluation judge."""
         ...
+
+
+class UsageMeter:
+    """An `LLMProvider` that forwards every call and records the tokens each model consumed.
+
+    Callers that only receive the final product of a call (an `Answer` carries one model and
+    token totals) read the per-model breakdown here with `take`.
+    """
+
+    def __init__(self, provider: LLMProvider) -> None:
+        self.provider = provider
+        self.name: ProviderName = provider.name
+        self.model = provider.model
+        self._usage: list[ModelUsage] = []
+
+    def generate(self, question: str, sources: Sequence[Hit], *, at_date: date) -> Generation:
+        return self._record(self.provider.generate(question, sources, at_date=at_date))
+
+    def complete(self, system: str, prompt: str, *, max_tokens: int = 1024) -> Generation:
+        return self._record(self.provider.complete(system, prompt, max_tokens=max_tokens))
+
+    def take(self) -> list[ModelUsage]:
+        """The usage recorded since the previous `take`, which starts a new count."""
+        usage, self._usage = self._usage, []
+        return usage
+
+    def _record(self, generation: Generation) -> Generation:
+        self._usage.extend(generation.model_usage)
+        return generation

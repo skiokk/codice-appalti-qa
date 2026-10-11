@@ -1,6 +1,5 @@
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from types import SimpleNamespace
 
 import pytest
 
@@ -15,6 +14,7 @@ from appalti_qa.evaluation.judge import (
     get_judge,
     parse_verdict,
 )
+from appalti_qa.llm.base import Generation, ModelUsage
 
 
 @dataclass
@@ -24,16 +24,23 @@ class StubProvider:
     reply: str
     name: str = "anthropic"
     model: str = "claude-opus-5-5"
+    iterations: tuple[ModelUsage, ...] = ()
     calls: list[tuple[str, str, int]] = field(default_factory=list)
 
-    def complete(self, system: str, prompt: str, *, max_tokens: int = 1024) -> SimpleNamespace:
+    def complete(self, system: str, prompt: str, *, max_tokens: int = 1024) -> Generation:
         self.calls.append((system, prompt, max_tokens))
-        return SimpleNamespace(
-            text=self.reply,
-            provider=self.name,
-            model=self.model,
-            input_tokens=2000,
-            output_tokens=100,
+        input_tokens = sum(part.input_tokens for part in self.iterations) or 2000
+        output_tokens = sum(part.output_tokens for part in self.iterations) or 100
+        served_by = self.iterations[-1].model if self.iterations else self.model
+        return Generation(
+            self.reply,
+            [],
+            served_by,
+            self.name,
+            input_tokens,
+            output_tokens,
+            "end_turn",
+            self.iterations,
         )
 
 
@@ -95,6 +102,23 @@ def test_llm_judge(items: list[EvalItem], make_answer: Callable) -> None:
     assert item.expected_answer in prompt and "Risposta del sistema [1]." in prompt
     assert max_tokens >= 1024
     assert judge.model == "claude-opus-5-5"
+
+
+def test_llm_judge_prices_every_attempt(items: list[EvalItem], make_answer: Callable) -> None:
+    """A verdict served by the fallback model also pays for the attempt that was declined."""
+    provider = StubProvider(
+        '{"verdict": "correct", "reason": "Completa."}',
+        iterations=(
+            ModelUsage("claude-opus-5-5", 2000, 50),  # declined after some output
+            ModelUsage("claude-opus-5", 2000, 100),  # the fallback that answered
+        ),
+    )
+    item = items[0]
+    verdict = LLMJudge(provider).grade(item, make_answer(item, "Risposta [1].", ["50/1"]))
+    assert (verdict.input_tokens, verdict.output_tokens) == (4000, 150)
+    opus_5_5 = (2000 * 4 + 50 * 20) / 1e6
+    opus_5 = (2000 * 5 + 100 * 25) / 1e6
+    assert verdict.cost_usd == pytest.approx(opus_5_5 + opus_5)
 
 
 def test_llm_judge_skips_abstentions(items: list[EvalItem], make_answer: Callable) -> None:

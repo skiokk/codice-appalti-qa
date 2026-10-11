@@ -6,13 +6,15 @@ import pytest
 from appalti_qa.evaluation.dataset import EvalItem
 from appalti_qa.evaluation.judge import OverlapJudge
 from appalti_qa.evaluation.metrics import (
+    answer_cost,
     answer_metrics,
     article_key,
     citation_scores,
     ranking_scores,
     retrieval_metrics,
 )
-from appalti_qa.evaluation.pricing import cost_usd, price_for
+from appalti_qa.evaluation.pricing import cost_usd, price_for, usage_cost
+from appalti_qa.llm.base import ModelUsage
 from appalti_qa.models import Answer
 
 
@@ -171,12 +173,72 @@ def test_pricing() -> None:
 @pytest.mark.parametrize(
     ("model", "expected"),
     [
-        ("claude-opus-5", 30.0),
+        ("claude-opus-5", 30.0),  # fallbacks of Claude Opus 5.5
         ("claude-opus-4-8", 30.0),
-        ("claude-sonnet-5", 12.0),
-        ("claude-fable-5-1", 60.0),
+        ("claude-sonnet-5", 12.0),  # fallback of Claude Sonnet 5.5
+        ("claude-fable-5-1", 60.0),  # selectable model, not a fallback target
     ],
 )
-def test_pricing_fallback_models(model: str, expected: float) -> None:
-    """Models the server-side refusal fallback may answer with have a price."""
+def test_pricing_other_models(model: str, expected: float) -> None:
     assert cost_usd("anthropic", model, 1_000_000, 1_000_000) == pytest.approx(expected)
+
+
+def test_usage_cost_prices_each_attempt_at_its_model() -> None:
+    declined = ModelUsage("claude-opus-5-5", 1_000_000, 100_000)
+    served = ModelUsage("claude-opus-5", 1_000_000, 200_000)
+    assert usage_cost("anthropic", [declined, served]) == pytest.approx(4 + 2 + 5 + 5)
+    assert usage_cost("anthropic", []) == 0.0
+    assert usage_cost("anthropic", [declined, ModelUsage("claude-x", 1, 1)]) is None
+    assert usage_cost("groq", [ModelUsage("openai/gpt-oss-120b", 10**6, 10**6)]) == 0.0
+
+
+def test_answer_cost(items: list[EvalItem], make_answer: Callable) -> None:
+    answer = make_answer(
+        items[0], "x", provider="anthropic", model="claude-opus-5", tokens=(2_000_000, 300_000)
+    )
+    assert answer_cost(answer) == pytest.approx(10 + 7.5)  # all on the serving model
+    usage = [
+        ModelUsage("claude-opus-5-5", 1_000_000, 100_000),
+        ModelUsage("claude-opus-5", 1_000_000, 200_000),
+    ]
+    assert answer_cost(answer, usage) == pytest.approx(6 + 10)
+
+
+def test_answer_metrics_prices_fallback_attempts(
+    items: list[EvalItem], make_answer: Callable
+) -> None:
+    """With a usage hook, an answer served by the fallback also pays for the declined attempt."""
+    pending: list[ModelUsage] = []
+    taken: list[int] = []
+
+    def answer(question: str, at_date: date) -> Answer:
+        item = next(item for item in items if item.question == question)
+        if item.id == "Q001":  # Claude Opus 5.5 declined mid-answer, Claude Opus 5 answered
+            pending.extend(
+                [
+                    ModelUsage("claude-opus-5-5", 1_000_000, 100_000),
+                    ModelUsage("claude-opus-5", 1_000_000, 200_000),
+                ]
+            )
+            served = ("claude-opus-5", (2_000_000, 300_000))
+        else:
+            pending.append(ModelUsage("claude-opus-5-5", 1_000_000, 0))
+            served = ("claude-opus-5-5", (1_000_000, 0))
+        return make_answer(
+            item, "Risposta [1].", ["50/1"], provider="anthropic", model=served[0], tokens=served[1]
+        )
+
+    def usage() -> list[ModelUsage]:
+        taken.append(len(pending))
+        calls = list(pending)
+        pending.clear()
+        return calls
+
+    pending.append(ModelUsage("claude-opus-5-5", 9, 9))  # left over before the run: not counted
+    metrics = answer_metrics(items[:2], answer, OverlapJudge(), usage=usage)
+    records = {r["id"]: r for r in metrics["items"]}
+    assert records["Q001"]["cost_usd"] == pytest.approx(6 + 10)
+    assert records["Q001"]["input_tokens"] == 2_000_000
+    assert records["Q002"]["cost_usd"] == pytest.approx(4)
+    assert metrics["overall"]["cost_usd"] == pytest.approx(20)
+    assert taken == [1, 2, 0, 1]  # reset before each answer, read after it

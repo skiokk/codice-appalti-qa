@@ -1,5 +1,5 @@
 # Evaluation question set for the Codice dei contratti pubblici (D.Lgs. 36/2023).
-# See eval/README_dataset.md for the field reference and the review workflow.
+# See eval/README_dataset.md for the field reference and the review process.
 
 - id: Q001
   question: "Cosa significa in pratica il principio del risultato per una stazione appaltante?"

@@ -22,7 +22,7 @@ packages it depends on with fakes or monkeypatching rather than relying on their
 | `retrieval` | `search`, `lookup`, `history`, `available_range`, `extract_refs`, `normattiva_url`, embedders, `embed_missing`, `cli_embed` (section 5) | `config`, `db`, `keys`, `models` | read-only on the corpus, except embeddings |
 | `llm` | `get_provider`, `LLMProvider`, `Generation`, `LLMError`, the providers, `ABSTAIN_TOKEN` (section 6) | `config`, `models` | no database access |
 | `answer` | `answer_question`, `Retriever`, `ABSTAIN_MESSAGE` (section 6) | `llm`, `retrieval` (lazily, default retriever only), `config`, `models` | |
-| `web` | `create_app`, `cli_serve`, `AnswerFn` (section 7) | `answer`, `retrieval`, `llm` (`LLMError`), shared modules | writes only `qa_log`; reads `eval/results/latest.json` |
+| `web` | `create_app`, `cli_serve`, `AnswerFn` (section 7) | `answer`, `retrieval`, `llm` (`LLMError`), shared modules | writes only `qa_log`; reads `eval/results/latest.json` (and `latest_retrieval.json`) |
 | `evaluation` | dataset, metrics, judges, xlsx review, reports, `cli_main` (section 8) | `answer`, `retrieval`, `llm`, shared modules | writes `eval/results/**`; edits `eval/dataset.yaml` only through `import-xlsx` |
 
 Imports go one way: `ingest` and `retrieval` never import `llm`, `answer`, `web` or `evaluation`,
@@ -550,7 +550,9 @@ SYSTEM_PROMPT: str                      # Italian; answer only from the sources,
   Opt in to server-side refusal fallback (`betas=["server-side-fallback-2026-07-01"]`,
   `fallbacks="default"`) and treat `stop_reason == "refusal"` as abstention. Each `char_location`
   citation maps `document_index` → `source_index` and keeps the exact `cited_text`; the provider
-  appends `[n]` after each cited text block. Tokens from `usage`.
+  appends `[n]` after each cited text block. Tokens from `usage.iterations` when present (every
+  attempt of a fallback chain, kept per model in `Generation.iterations`), otherwise from the
+  top-level `usage`.
 - `GroqProvider(settings, model=None)`: chat completions with sources numbered `[1]..[n]` in the
   prompt; markers in the output are parsed into citations (`source_index = n - 1`, out-of-range
   markers dropped). `cited_text` is best effort: the sentence of the source with the highest word
@@ -615,7 +617,8 @@ Pages (Italian, Bootstrap Italia, htmx; templates in `web/templates/`, static in
   link, model/provider/latency, abstention notice, and a legal disclaimer.
 - `GET /norma/{key:path}?data=YYYY-MM-DD` — text of the unit(s) in force at the date (via
   `retrieval.lookup`) and their version history (`retrieval.history`).
-- `GET /valutazione` — renders `eval/results/latest.json` if present (see section 8).
+- `GET /valutazione` — renders `eval/results/latest.json` if present (see section 8); when it is
+  an answer run, the comparison of retrieval modes comes from `eval/results/latest_retrieval.json`.
 - `GET /informazioni` — sources, method, limitations, privacy, accessibility statement.
 
 JSON API (`/api/v1`, OpenAPI docs at `/api/docs`): `POST /api/v1/answer` (alias `POST /api/ask`)
@@ -704,6 +707,7 @@ def import_xlsx(path: Path, dataset_path: Path) -> list[EvalItem]   # merge revi
 
 # appalti_qa/evaluation/report.py
 def write_results(results: dict, out_dir: Path = Path("eval/results"), *, latest: bool = True) -> Path
+def published_names(results: dict, out_dir: Path = Path("eval/results")) -> list[str]  # latest, latest_retrieval
 def render_report(results: dict) -> str                             # markdown
 def cli_main(argv: Sequence[str] | None = None) -> int
 ```
@@ -712,9 +716,14 @@ CLI (`appalti-qa eval <sub>`): `validate [--db]`, `retrieval [--mode] [--k] [--p
 `answers` (alias `run`) `[--provider] [--model] [--mode] [--k] [--limit] [--ids Q001,...]
 [--publish]`, `report RESULTS.json`, `export-xlsx OUT.xlsx [--with-answers RESULTS.json]`,
 `import-xlsx IN.xlsx [--db] [--dry-run]`, `compare RESULTS.json...`. Runs use only `verificata` and
-`corretta` questions unless `--all` is given. A run updates `latest.json` (the published results)
-only with `--publish`; `answers --publish` is refused when the answering provider or the judge
-resolves to fake, so placeholder numbers are never published. In an answer run each question is
+`corretta` questions unless `--all` is given. A run updates the published results only with
+`--publish`: an answer run is copied to `latest.json`, a retrieval run to `latest_retrieval.json`
+and also to `latest.json` unless that holds an answer run, so neither kind replaces the other.
+`answers --publish` is refused when the answering provider or the judge resolves to fake, and
+any `--publish` that retrieves with semantic or hybrid search is refused (exit 2, nothing
+written) when `EMBEDDING_MODEL=fake` or fewer than 99% of the versions searchable on the
+evaluated dates are embedded with the configured model (`embedding_coverage`), so placeholder
+numbers are never published. In an answer run each question is
 answered through `answer_question` with the same `search(question, date, k, mode)` call as the
 app; the retrieval metrics come from separate calls at the largest cutoff.
 The xlsx is for a human reviewer: Italian column headers, wrapped text, frozen header row, an
@@ -722,8 +731,9 @@ The xlsx is for a human reviewer: Italian column headers, wrapped text, frozen h
 rows become `corretta`, `OK` rows `verificata` and `Scartare` rows `scartata` (kept, never
 evaluated). Every metric group carries an `n` count, and a metric is `null` when it has no data.
 
-Results JSON (`eval/results/<UTC timestamp>_<provider>_<model>.json`, copied to
-`eval/results/latest.json` when published; the web page reads it):
+Results JSON (`eval/results/<UTC timestamp>_<provider>_<model>.json`, or `<UTC
+timestamp>_retrieval.json` for a retrieval run, copied to `eval/results/latest.json` and, for a
+retrieval run, `latest_retrieval.json` when published as above; the web page reads them):
 
 ```json
 {

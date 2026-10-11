@@ -10,18 +10,23 @@ from collections import defaultdict
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from datetime import date
 from statistics import fmean
-from typing import Any, get_args
+from typing import TYPE_CHECKING, Any, get_args
 
 from appalti_qa.evaluation.dataset import EvalItem, Kind
 from appalti_qa.evaluation.judge import Judge
-from appalti_qa.evaluation.pricing import cost_usd
+from appalti_qa.evaluation.pricing import cost_usd, usage_cost
 from appalti_qa.keys import make_key, parse_key, ref_matches
 from appalti_qa.models import Answer, Hit
+
+if TYPE_CHECKING:
+    from appalti_qa.llm import ModelUsage
 
 logger = logging.getLogger(__name__)
 
 Retriever = Callable[[str, date, int], list[Hit]]  # (question, at_date, k)
 AnswerFn = Callable[[str, date], Answer]
+# The per-model tokens of the model calls made since the previous call (e.g. UsageMeter.take).
+UsageFn = Callable[[], Sequence["ModelUsage"]]
 Record = dict[str, Any]
 Aggregator = Callable[[list[Record]], Any]
 
@@ -238,7 +243,20 @@ def citation_scores(
     return (precision / len(cited) if cited else None), recall / len(expected_refs)
 
 
-def _answer_fields(item: EvalItem, answer: Answer, elapsed_ms: int) -> Record:
+def answer_cost(answer: Answer, usage: Sequence[ModelUsage] = ()) -> float | None:
+    """Cost of an answer in USD, or None when a model it used has no known price.
+
+    `usage` lists the tokens of each model attempt behind the answer, priced at that model's
+    rate; without it, all the answer's tokens are priced at the rate of the model that wrote it.
+    """
+    if usage:
+        return usage_cost(answer.provider, usage)
+    return cost_usd(answer.provider, answer.model, answer.input_tokens, answer.output_tokens)
+
+
+def _answer_fields(
+    item: EvalItem, answer: Answer, elapsed_ms: int, usage: Sequence[ModelUsage]
+) -> Record:
     cited = answer.cited_keys
     precision, recall = citation_scores(item.expected_refs, cited)
     return {
@@ -251,9 +269,7 @@ def _answer_fields(item: EvalItem, answer: Answer, elapsed_ms: int) -> Record:
         "latency_ms": answer.latency_ms or elapsed_ms,
         "input_tokens": answer.input_tokens,
         "output_tokens": answer.output_tokens,
-        "cost_usd": cost_usd(
-            answer.provider, answer.model, answer.input_tokens, answer.output_tokens
-        ),
+        "cost_usd": answer_cost(answer, usage),
         "answer": answer.text,
         "citations": [
             {"unit_key": c.unit_key, "cited_text": c.cited_text, "source_index": c.source_index}
@@ -262,19 +278,25 @@ def _answer_fields(item: EvalItem, answer: Answer, elapsed_ms: int) -> Record:
     }
 
 
-def answer_metrics(items: Sequence[EvalItem], answer: AnswerFn, judge: Judge) -> dict[str, Any]:
+def answer_metrics(
+    items: Sequence[EvalItem], answer: AnswerFn, judge: Judge, *, usage: UsageFn | None = None
+) -> dict[str, Any]:
     """Answer each item at its `vigenza` date and score it.
 
     Correctness is the judge score (0 / 0.5 / 1); citation precision and recall compare the
     cited units with the expected refs (questions with refs only); abstention accuracy checks
     that exactly the unanswerable questions are declined. A failing answer or judge call is
     recorded on the item ("error" / "judge_error") and left out of the affected averages.
+    `usage`, called around each answer, returns the per-model tokens of the calls made for it, so
+    that an answer served by a fallback model pays for every attempt (see `answer_cost`).
     Returns {"overall", "by_kind", "by_category", "items"}.
     """
     records: list[Record] = []
     for position, item in enumerate(items, start=1):
         record = _item_fields(item)
         records.append(record)
+        if usage is not None:
+            usage()  # count from this question on
         started = time.perf_counter()
         # One failing question (rate limit, timeout) must not abort a paid run.
         try:
@@ -283,7 +305,9 @@ def answer_metrics(items: Sequence[EvalItem], answer: AnswerFn, judge: Judge) ->
             logger.warning("%s: answer failed: %s", item.id, exc)
             record["error"] = f"{type(exc).__name__}: {exc}"
             continue
-        record.update(_answer_fields(item, result, round((time.perf_counter() - started) * 1000)))
+        elapsed_ms = round((time.perf_counter() - started) * 1000)
+        calls = usage() if usage is not None else ()
+        record.update(_answer_fields(item, result, elapsed_ms, calls))
         try:
             verdict = judge.grade(item, result)
         except Exception as exc:

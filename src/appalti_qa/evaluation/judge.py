@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Protocol
 
 from appalti_qa.config import Settings, get_settings
 from appalti_qa.evaluation.dataset import EvalItem
-from appalti_qa.evaluation.pricing import cost_usd
+from appalti_qa.evaluation.pricing import usage_cost
 from appalti_qa.models import Answer
 
 if TYPE_CHECKING:
@@ -189,12 +189,7 @@ class LLMJudge:
             reason,
             input_tokens=generation.input_tokens,
             output_tokens=generation.output_tokens,
-            cost_usd=cost_usd(
-                generation.provider,
-                generation.model,
-                generation.input_tokens,
-                generation.output_tokens,
-            ),
+            cost_usd=usage_cost(generation.provider, generation.model_usage),
         )
 
 

@@ -167,6 +167,28 @@ _IN_FORCE_SQL = """
 """
 
 
+_EMBEDDED_SQL = """
+    SELECT count(*),
+        count(*) FILTER (WHERE v.embedding IS NOT NULL AND v.embedding_model = %(model)s)
+    FROM unit_versions v
+    WHERE NOT v.repealed AND EXISTS (
+        SELECT 1 FROM unnest(%(days)s::date[]) AS d(day)
+        WHERE v.valid_from <= d.day AND (v.valid_to IS NULL OR v.valid_to > d.day))
+"""
+
+
+def embedding_coverage(
+    conn: psycopg.Connection, model: str, days: Iterable[date]
+) -> tuple[int, int]:
+    """(embedded, total) over the versions semantic search can return on any of `days`.
+
+    `total` counts the versions in force and not repealed on at least one of the days;
+    `embedded`, those of them with an embedding made by `model`.
+    """
+    row = conn.execute(_EMBEDDED_SQL, {"model": model, "days": sorted(set(days))}).fetchone()
+    return (int(row[1]), int(row[0])) if row else (0, 0)
+
+
 def units_in_force(conn: psycopg.Connection, day: date) -> dict[str, tuple[str, bool]]:
     """Every unit in force on `day`: key -> (text, repealed), in document order."""
     rows = conn.execute(_IN_FORCE_SQL, {"day": day}).fetchall()

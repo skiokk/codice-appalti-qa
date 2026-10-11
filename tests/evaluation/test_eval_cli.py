@@ -1,14 +1,17 @@
 import json
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from contextlib import contextmanager
 from datetime import date
 from pathlib import Path
+from typing import Any
 
+import anthropic
+import httpx2
 import psycopg
 import pytest
 from openpyxl import load_workbook
 
-from appalti_qa.config import get_settings
+from appalti_qa.config import Settings, get_settings
 from appalti_qa.evaluation import cli as eval_cli
 from appalti_qa.evaluation import cli_main
 from appalti_qa.evaluation.dataset import EvalItem, load_dataset
@@ -45,11 +48,28 @@ def stub_backends(
         return stub_retriever
 
     def answer_backend(settings, provider_name, model, retrieve, *, k, mode, delay_s):
-        return stub_answer, provider_name, model or "fake"
+        return eval_cli.AnswerBackend(stub_answer, provider_name, model or "fake")
 
     monkeypatch.setattr(eval_cli, "_search_retriever", search_retriever)
     monkeypatch.setattr(eval_cli, "_answer_backend", answer_backend)
     return modes
+
+
+@pytest.fixture
+def coverage(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, set[date]]]:
+    """Every version has an embedding; records the (model, days) of each check."""
+    calls: list[tuple[str, set[date]]] = []
+
+    def embedding_coverage(conn: object, model: str, days: Iterable[date]) -> tuple[int, int]:
+        calls.append((model, set(days)))
+        return 2811, 2811
+
+    monkeypatch.setattr(eval_cli, "embedding_coverage", embedding_coverage)
+    return calls
+
+
+def _set_coverage(monkeypatch: pytest.MonkeyPatch, embedded: int, total: int) -> None:
+    monkeypatch.setattr(eval_cli, "embedding_coverage", lambda conn, model, days: (embedded, total))
 
 
 def test_validate(dataset_path: Path, capsys: pytest.CaptureFixture) -> None:
@@ -148,11 +168,105 @@ def test_retrieval_command(
 def test_retrieval_command_publish(
     tmp_path: Path, dataset_path: Path, stub_backends: list[str]
 ) -> None:
+    """Lexical search uses no embeddings: nothing to check before publishing."""
     out = tmp_path / "results"
     args = ["retrieval", "--dataset", str(dataset_path), "--all", "--out", str(out)]
     assert cli_main([*args, "--mode", "lexical", "--publish"]) == 0
     latest = json.loads((out / "latest.json").read_text())
     assert latest["retrieval_by_mode"].keys() == {"lexical"}
+    assert (out / "latest_retrieval.json").read_text() == (out / "latest.json").read_text()
+    assert (out / "latest_retrieval.md").exists()
+
+
+def test_retrieval_publish_checks_embeddings(
+    tmp_path: Path,
+    dataset_path: Path,
+    stub_backends: list[str],
+    coverage: list,
+    capsys: pytest.CaptureFixture,
+) -> None:
+    out = tmp_path / "results"
+    argv = ["retrieval", "--dataset", str(dataset_path), "--all", "--out", str(out), "--publish"]
+    assert cli_main(argv) == 0
+    days = {date(2025, 1, 1), date(2024, 6, 1)}  # the dates of the evaluated questions
+    assert coverage == [(get_settings().embedding_model, days)]
+    assert json.loads((out / "latest_retrieval.json").read_text())["retrieval_by_mode"].keys() == {
+        "lexical",
+        "semantic",
+        "hybrid",
+    }
+    printed = capsys.readouterr().out
+    assert f"Published: {out / 'latest'}.json and .md" in printed
+    assert f"Published: {out / 'latest_retrieval'}.json and .md" in printed
+
+
+@pytest.mark.parametrize("mode", ["semantic", "hybrid"])
+def test_retrieval_publish_refused_without_embeddings(
+    tmp_path: Path,
+    dataset_path: Path,
+    stub_backends: list[str],
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture,
+    mode: str,
+) -> None:
+    out = tmp_path / "results"
+    argv = ["retrieval", "--dataset", str(dataset_path), "--all", "--out", str(out), "--publish"]
+    _set_coverage(monkeypatch, 2780, 2811)  # 98.9%
+    assert cli_main([*argv, "--mode", "lexical", "--mode", mode]) == 2
+    err = capsys.readouterr().err
+    assert "Refusing to publish: 2,780 of the 2,811 versions in force" in err
+    assert "(98.9%) have an embedding from intfloat/multilingual-e5-base" in err
+    assert "appalti-qa embed" in err
+    _set_coverage(monkeypatch, 0, 0)  # empty corpus
+    assert cli_main([*argv, "--mode", mode]) == 2
+    assert "0 of the 0 versions" in capsys.readouterr().err
+    assert stub_backends == []  # refused before any search
+    assert not out.exists()
+
+    assert cli_main([*argv[:-1], "--mode", mode]) == 0  # without --publish the run is written
+    assert not (out / "latest.json").exists() and not (out / "latest_retrieval.json").exists()
+
+
+def test_retrieval_publish_refused_with_fake_embedder(
+    tmp_path: Path,
+    dataset_path: Path,
+    stub_backends: list[str],
+    coverage: list,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture,
+) -> None:
+    monkeypatch.setenv("EMBEDDING_MODEL", "fake")
+    get_settings.cache_clear()
+    out = tmp_path / "results"
+    argv = ["retrieval", "--dataset", str(dataset_path), "--all", "--out", str(out), "--publish"]
+    assert cli_main(argv) == 2
+    assert "Refusing to publish: EMBEDDING_MODEL is 'fake'" in capsys.readouterr().err
+    assert coverage == [] and not out.exists()
+
+
+def test_retrieval_publish_keeps_published_answers(
+    tmp_path: Path,
+    dataset_path: Path,
+    stub_backends: list[str],
+    coverage: list,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture,
+) -> None:
+    """Retrieval and answer runs published in either order leave each other's report in place."""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+    get_settings.cache_clear()
+    monkeypatch.setattr(eval_cli, "get_judge", lambda settings: OverlapJudge())  # no network
+    common = ["--dataset", str(dataset_path), "--out", str(tmp_path), "--publish"]
+    retrieval = ["retrieval", *common, "--all"]
+    answers = ["answers", *common, "--provider", "anthropic", "--judge-provider", "anthropic"]
+    assert cli_main(retrieval) == 0
+    assert cli_main(answers) == 0
+    assert json.loads((tmp_path / "latest.json").read_text())["answer"]
+    assert "retrieval_by_mode" in json.loads((tmp_path / "latest_retrieval.json").read_text())
+    capsys.readouterr()
+    assert cli_main(retrieval) == 0
+    assert json.loads((tmp_path / "latest.json").read_text())["answer"]
+    assert f"Kept {tmp_path / 'latest'}.json: it holds an answer run." in capsys.readouterr().out
 
 
 def test_answers_command(
@@ -210,6 +324,7 @@ def test_answers_publish(
     tmp_path: Path,
     dataset_path: Path,
     stub_backends: list[str],
+    coverage: list,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
@@ -220,6 +335,38 @@ def test_answers_publish(
     latest = json.loads((tmp_path / "latest.json").read_text())
     assert latest["config"]["provider"] == "anthropic"
     assert (tmp_path / "latest.md").exists()
+    assert not (tmp_path / "latest_retrieval.json").exists()
+    assert [model for model, _ in coverage] == ["intfloat/multilingual-e5-base"]
+
+    # lexical answers need no embeddings
+    coverage.clear()
+    assert cli_main([*argv, "--provider", "anthropic", "--judge-provider", "anthropic"]) == 0
+    assert len(coverage) == 1
+    assert (
+        cli_main(
+            [*argv, "--provider", "anthropic", "--judge-provider", "anthropic", "--mode", "lexical"]
+        )
+        == 0
+    )
+    assert len(coverage) == 1
+
+
+def test_answers_publish_refused_without_embeddings(
+    tmp_path: Path,
+    dataset_path: Path,
+    stub_backends: list[str],
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture,
+) -> None:
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+    get_settings.cache_clear()
+    monkeypatch.setattr(eval_cli, "get_judge", lambda settings: OverlapJudge())  # no network
+    _set_coverage(monkeypatch, 100, 2811)
+    out = tmp_path / "results"
+    argv = ["answers", "--dataset", str(dataset_path), "--out", str(out), "--publish"]
+    assert cli_main([*argv, "--provider", "anthropic", "--judge-provider", "anthropic"]) == 2
+    assert "Refusing to publish: 100 of the 2,811 versions" in capsys.readouterr().err
+    assert stub_backends == [] and not out.exists()
 
 
 def test_answers_retrieve_like_production(
@@ -253,7 +400,7 @@ def test_answers_retrieve_like_production(
                 provider="fake",
             )
 
-        return answer, provider_name, "fake"
+        return eval_cli.AnswerBackend(answer, provider_name, "fake")
 
     monkeypatch.setattr(eval_cli, "_search_retriever", search_retriever)
     monkeypatch.setattr(eval_cli, "_answer_backend", answer_backend)
@@ -367,3 +514,105 @@ def test_answers_with_the_real_pipeline(
     assert records["Q001"]["cited"] == ["50/2", "50/1"]  # the fake quotes the top two sources
     assert records["Q003"]["abstained"] is True  # no sources retrieved
     assert results["answer"]["overall"]["abstention_accuracy"] == 1.0
+
+
+def _fallback_reply(request: httpx2.Request) -> httpx2.Response:
+    """Claude Opus 5.5 declined after some output; Claude Opus 5 served the reply.
+
+    The top-level usage covers only the serving attempt; `usage.iterations` has both.
+    """
+    body: dict[str, Any] = {
+        "id": "msg_test",
+        "type": "message",
+        "role": "assistant",
+        "model": "claude-opus-5",
+        "content": [
+            {
+                "type": "fallback",
+                "from": {"model": "claude-opus-5-5"},
+                "to": {"model": "claude-opus-5"},
+                "trigger": {"type": "refusal"},
+            },
+            {
+                "type": "text",
+                "text": "Sotto i 140.000 euro.",
+                "citations": [
+                    {
+                        "type": "char_location",
+                        "cited_text": "Testo della disposizione.",
+                        "document_index": 0,
+                        "document_title": "titolo",
+                        "start_char_index": 0,
+                        "end_char_index": 25,
+                    }
+                ],
+            },
+        ],
+        "stop_reason": "end_turn",
+        "stop_sequence": None,
+        "usage": {
+            "input_tokens": 1000,
+            "output_tokens": 80,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 200,
+            "iterations": [
+                {
+                    "type": "message",
+                    "model": "claude-opus-5-5",
+                    "input_tokens": 1000,
+                    "output_tokens": 50,
+                    "cache_creation_input_tokens": 200,
+                    "cache_read_input_tokens": 0,
+                },
+                {
+                    "type": "fallback_message",
+                    "model": "claude-opus-5",
+                    "input_tokens": 1000,
+                    "output_tokens": 80,
+                    "cache_creation_input_tokens": 0,
+                    "cache_read_input_tokens": 200,
+                },
+            ],
+        },
+    }
+    return httpx2.Response(200, json=body)
+
+
+def test_answers_cost_every_fallback_attempt(
+    tmp_path: Path,
+    dataset_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    no_db: None,
+    stub_retriever: Callable,
+) -> None:
+    """End to end through the real answer backend: an answer served by the fallback model is
+    priced for both attempts, each at its own model's rate (synthetic API responses)."""
+    from appalti_qa.llm import AnthropicProvider
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+    get_settings.cache_clear()
+
+    def get_provider(settings: Settings, *, provider: str, model: str | None) -> Any:
+        client = anthropic.Anthropic(
+            api_key="sk-test",
+            max_retries=0,
+            http_client=anthropic.DefaultHttpxClient(
+                transport=httpx2.MockTransport(_fallback_reply)
+            ),
+        )
+        return AnthropicProvider(settings, model=model, client=client)
+
+    monkeypatch.setattr("appalti_qa.llm.get_provider", get_provider)
+    monkeypatch.setattr(eval_cli, "_search_retriever", lambda mode, conn, settings: stub_retriever)
+    argv = ["answers", "--dataset", str(dataset_path), "--out", str(tmp_path), "--ids", "Q001"]
+    assert cli_main([*argv, "--provider", "anthropic"]) == 0
+
+    results = json.loads(_run_file(tmp_path).read_text())
+    assert results["config"]["model"] == "claude-opus-5-5"
+    (record,) = results["items"]
+    assert record["cited"] == ["50/2"] and not record["abstained"]
+    assert (record["input_tokens"], record["output_tokens"]) == (2400, 130)
+    declined = (1200 * 4.00 + 50 * 20.00) / 1e6  # Claude Opus 5.5
+    served = (1200 * 5.00 + 80 * 25.00) / 1e6  # Claude Opus 5
+    assert record["cost_usd"] == pytest.approx(declined + served)
+    assert results["answer"]["overall"]["cost_usd"] == pytest.approx(declined + served, abs=1e-6)

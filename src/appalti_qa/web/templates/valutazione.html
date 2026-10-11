@@ -30,6 +30,7 @@
   {% for section in results.sections %}
   <section class="mt-5" aria-labelledby="sezione-{{ loop.index }}">
     <h2 id="sezione-{{ loop.index }}">{{ section.title }}</h2>
+    {% if section.overall %}
     <div class="table-responsive">
       <table class="table">
         <caption>{{ section.title }}: risultati complessivi</caption>
@@ -43,6 +44,7 @@
         </tbody>
       </table>
     </div>
+    {% endif %}
     {% for table in section.breakdowns %}
     <div class="table-responsive">
       <table class="table">

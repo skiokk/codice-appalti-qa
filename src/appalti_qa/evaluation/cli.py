@@ -10,7 +10,7 @@ from collections.abc import Iterator, Sequence
 from contextlib import contextmanager, nullcontext
 from datetime import date
 from pathlib import Path
-from typing import Any, get_args
+from typing import Any, NamedTuple, get_args
 
 import psycopg
 
@@ -19,15 +19,18 @@ from appalti_qa.evaluation.dataset import (
     DEFAULT_DATASET,
     DatasetError,
     EvalItem,
+    embedding_coverage,
     load_dataset,
     referenced_texts,
     select_items,
     validate_dataset,
 )
 from appalti_qa.evaluation.judge import get_judge
-from appalti_qa.evaluation.metrics import DEFAULT_K_VALUES, AnswerFn, Retriever
+from appalti_qa.evaluation.metrics import DEFAULT_K_VALUES, AnswerFn, Retriever, UsageFn
 from appalti_qa.evaluation.report import (
     DEFAULT_RESULTS_DIR,
+    LATEST,
+    published_names,
     render_comparison,
     render_report,
     write_results,
@@ -42,6 +45,17 @@ from appalti_qa.models import Answer, Citation, Hit
 
 MODES: tuple[str, ...] = get_args(RetrievalMode)
 PROVIDERS: tuple[str, ...] = get_args(ProviderName)
+EMBEDDING_MODES: frozenset[str] = frozenset({"semantic", "hybrid"})
+# Share of the searchable versions that must carry an embedding from the configured model before
+# results of the modes that use embeddings can be published.
+MIN_EMBEDDING_COVERAGE = 0.99
+
+
+class AnswerBackend(NamedTuple):
+    answer: AnswerFn
+    provider: str
+    model: str
+    usage: UsageFn | None = None  # per-model tokens of the calls since the previous call
 
 
 # --- backends (patched in tests) --------------------------------------------------------------
@@ -81,12 +95,12 @@ def _answer_backend(
     k: int,
     mode: RetrievalMode,
     delay_s: float,
-) -> tuple[AnswerFn, str, str]:
-    """(answer function, provider name, model) for the run."""
+) -> AnswerBackend:
+    """The answer function of the run, with a meter of the tokens each model consumed."""
     from appalti_qa.answer import answer_question
-    from appalti_qa.llm import get_provider
+    from appalti_qa.llm import UsageMeter, get_provider
 
-    provider = get_provider(settings, provider=provider_name, model=model)
+    provider = UsageMeter(get_provider(settings, provider=provider_name, model=model))
 
     def answer(question: str, at_date: date) -> Answer:
         if delay_s:
@@ -95,7 +109,7 @@ def _answer_backend(
             question, at_date, settings, provider=provider, retriever=retrieve, k=k, mode=mode
         )
 
-    return answer, provider.name, provider.model
+    return AnswerBackend(answer, provider.name, provider.model, provider.take)
 
 
 # --- helpers ----------------------------------------------------------------------------------
@@ -191,6 +205,19 @@ def _answers_from_results(results: dict[str, Any], items: Sequence[EvalItem]) ->
     return answers
 
 
+def _write(results: dict[str, Any], out: Path, *, publish: bool) -> int:
+    """Write the run (and with `publish`, its published copies) and print a summary."""
+    published = published_names(results, out) if publish else []
+    path = write_results(results, out, latest=publish)
+    print(_overview(results))
+    print(f"Results: {path}")
+    for name in published:
+        print(f"Published: {out / name}.json and .md")
+    if publish and LATEST not in published:
+        print(f"Kept {out / LATEST}.json: it holds an answer run.")
+    return 0
+
+
 # --- commands ---------------------------------------------------------------------------------
 
 
@@ -225,14 +252,15 @@ def _cmd_retrieval(args: argparse.Namespace) -> int:
         "judge": None,
     }
     with _open_db() as conn:
+        refusal = _embedding_refusal(settings, modes, items, conn) if args.publish else None
+        if refusal:
+            print(refusal, file=sys.stderr)
+            return 2
         retrievers = {mode: _search_retriever(mode, conn, settings) for mode in modes}
         results = run_retrieval_eval(
             items, retrievers, primary=primary, dataset=summary, config=config, k_values=args.k
         )
-    path = write_results(results, args.out, latest=args.publish)
-    print(_overview(results))
-    print(f"Results: {path}")
-    return 0
+    return _write(results, args.out, publish=args.publish)
 
 
 def _publish_refusal(provider: str, judge_provider: str) -> str | None:
@@ -246,6 +274,42 @@ def _publish_refusal(provider: str, judge_provider: str) -> str | None:
         f"Refusing to publish: the {' and the '.join(fake)} would use the fake provider, so the"
         " numbers are placeholders. Set the API keys (see LLM_PROVIDER, JUDGE_PROVIDER) or run"
         " without --publish."
+    )
+
+
+def _embedding_refusal(
+    settings: Settings,
+    modes: Sequence[str],
+    items: Sequence[EvalItem],
+    conn: psycopg.Connection,
+) -> str | None:
+    """Why results of `modes` must not be published for lack of embeddings, or None if they may.
+
+    Semantic search only returns versions embedded by the configured model, so with the fake
+    embedder or a partly embedded corpus it returns little or nothing and hybrid search is in
+    effect lexical: the published numbers would not describe the system.
+    """
+    if not EMBEDDING_MODES.intersection(modes):
+        return None
+    from appalti_qa.retrieval.embedding import FAKE_MODEL_NAME
+
+    model = settings.embedding_model
+    if model == FAKE_MODEL_NAME:
+        return (
+            "Refusing to publish: EMBEDDING_MODEL is 'fake', so semantic search does not use the"
+            " embeddings of the corpus and hybrid search is in effect lexical. Set EMBEDDING_MODEL"
+            " to the model the corpus was embedded with, or run without --publish."
+        )
+    embedded, total = embedding_coverage(conn, model, {item.vigenza for item in items})
+    if total and embedded / total >= MIN_EMBEDDING_COVERAGE:
+        return None
+    share = f" ({embedded / total:.1%})" if total else ""
+    return (
+        f"Refusing to publish: {embedded:,} of the {total:,} versions in force on the evaluated"
+        f" dates{share} have an embedding from {model}; at least {MIN_EMBEDDING_COVERAGE:.0%}"
+        " are needed, otherwise semantic search misses the rest and hybrid search degrades to"
+        " lexical. Run `appalti-qa embed` (or set EMBEDDING_MODEL to the model the corpus was"
+        " embedded with), or run without --publish."
     )
 
 
@@ -272,12 +336,17 @@ def _cmd_answers(args: argparse.Namespace) -> int:
     mode = args.mode or settings.retrieval_mode
     k = args.k or settings.default_top_k
     with _open_db() as conn:
+        refusal = _embedding_refusal(settings, [mode], items, conn) if args.publish else None
+        if refusal:
+            print(refusal, file=sys.stderr)
+            return 2
         # Answers retrieve exactly as the app does (same k and mode); the retrieval metrics make
         # their own deeper calls, since the fused ranking depends on the requested depth.
         retrieve = _search_retriever(mode, conn, settings)
-        answer, provider, model = _answer_backend(
+        backend = _answer_backend(
             settings, provider_name, args.model, retrieve, k=k, mode=mode, delay_s=args.delay
         )
+        provider, model = backend.provider, backend.model
         config: dict[str, Any] = {
             "provider": provider,
             "model": model,
@@ -295,12 +364,15 @@ def _cmd_answers(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         results = run_answer_eval(
-            items, answer, judge, retrieve=retrieve, dataset=summary, config=config
+            items,
+            backend.answer,
+            judge,
+            retrieve=retrieve,
+            dataset=summary,
+            config=config,
+            usage=backend.usage,
         )
-    path = write_results(results, args.out, latest=args.publish)
-    print(_overview(results))
-    print(f"Results: {path}")
-    return 0
+    return _write(results, args.out, publish=args.publish)
 
 
 def _cmd_report(args: argparse.Namespace) -> int:
@@ -384,7 +456,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.set_defaults(handler=_cmd_validate)
 
     p = sub.add_parser(
-        "retrieval", help="retrieval metrics per mode, no LLM (latest.json only with --publish)"
+        "retrieval",
+        help="retrieval metrics per mode, no LLM (latest_retrieval.json only with --publish)",
     )
     _add_selection(p)
     p.add_argument("--mode", action="append", choices=MODES, help="repeatable; default: all")
@@ -392,7 +465,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--publish",
         action="store_true",
-        help="also write latest.json (the web page), e.g. before any answer run exists",
+        help="also write latest_retrieval.json, and latest.json (the web page) unless it holds an"
+        " answer run; refused when semantic search lacks embeddings",
     )
     p.set_defaults(handler=_cmd_retrieval)
 
@@ -411,7 +485,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--publish",
         action="store_true",
-        help="also write latest.json (the web page); refused when the provider or judge is fake",
+        help="also write latest.json (the web page); refused when the provider or judge is fake"
+        " or semantic search lacks embeddings",
     )
     p.set_defaults(handler=_cmd_answers)
 

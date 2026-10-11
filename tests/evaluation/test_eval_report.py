@@ -7,7 +7,12 @@ import pytest
 
 from appalti_qa.evaluation.dataset import EvalItem
 from appalti_qa.evaluation.judge import OverlapJudge
-from appalti_qa.evaluation.report import render_comparison, render_report, write_results
+from appalti_qa.evaluation.report import (
+    published_names,
+    render_comparison,
+    render_report,
+    write_results,
+)
 from appalti_qa.evaluation.runner import (
     dataset_summary,
     new_run_id,
@@ -108,6 +113,50 @@ def test_write_results(tmp_path: Path, answer_results: dict) -> None:
 
     other = write_results({**answer_results, "run_id": "x"}, tmp_path / "other", latest=False)
     assert not (other.parent / "latest.json").exists()
+
+
+@pytest.fixture
+def retrieval_results(items: list[EvalItem], stub_retriever: Callable) -> dict:
+    return run_retrieval_eval(
+        items,
+        {"lexical": stub_retriever, "hybrid": stub_retriever},
+        primary="hybrid",
+        dataset={},
+        config={"retrieval_mode": "hybrid"},
+        now=NOW,
+    )
+
+
+def test_publish_retrieval_then_answers(
+    tmp_path: Path, retrieval_results: dict, answer_results: dict
+) -> None:
+    """The per-mode retrieval report stays published after an answer run is published."""
+    out = tmp_path / "results"
+    assert published_names(retrieval_results, out) == ["latest", "latest_retrieval"]
+    write_results(retrieval_results, out)
+    assert json.loads((out / "latest.json").read_text())["run_id"].endswith("_retrieval")
+
+    assert published_names(answer_results, out) == ["latest"]
+    write_results(answer_results, out)
+    assert json.loads((out / "latest.json").read_text())["run_id"].endswith("_fake_fake")
+    kept = json.loads((out / "latest_retrieval.json").read_text())
+    assert kept["retrieval_by_mode"].keys() == {"lexical", "hybrid"}
+    assert "| lexical | 3 |" in (out / "latest_retrieval.md").read_text()
+
+
+def test_publish_retrieval_keeps_answer_run(
+    tmp_path: Path, retrieval_results: dict, answer_results: dict
+) -> None:
+    """A retrieval run never replaces published answers on the web page."""
+    out = tmp_path / "results"
+    write_results(answer_results, out)
+    assert published_names(retrieval_results, out) == ["latest_retrieval"]
+    write_results({**retrieval_results, "run_id": "20261012T000000Z_retrieval"}, out)
+    assert json.loads((out / "latest.json").read_text())["answer"]
+    published = json.loads((out / "latest_retrieval.json").read_text())
+    assert published["run_id"] == "20261012T000000Z_retrieval"
+    (out / "latest.json").write_text("{not json", encoding="utf-8")  # unreadable: replaced
+    assert published_names(retrieval_results, out) == ["latest", "latest_retrieval"]
 
 
 def test_render_report(answer_results: dict) -> None:

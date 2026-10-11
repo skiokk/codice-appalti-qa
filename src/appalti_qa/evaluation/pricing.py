@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from appalti_qa.llm import ModelUsage
 
 
 @dataclass(frozen=True, slots=True)
@@ -13,15 +18,15 @@ class Price:
     output_per_mtok: float
 
 
-# Anthropic first-party list prices, standard tier, without prompt-caching discounts. The
-# server-side refusal fallback can answer with another model, so the models it may route to are
-# priced too.
+# Anthropic first-party list prices, standard tier, without prompt-caching discounts.
 ANTHROPIC_PRICES: dict[str, Price] = {
     "claude-opus-5-5": Price(4.00, 20.00),
     "claude-sonnet-5-5": Price(2.00, 10.00),
     "claude-haiku-5-5": Price(0.10, 0.50),  # prompts up to 100K tokens
-    # fallback-eligible models
     "claude-fable-5-1": Price(10.00, 50.00),
+    # Models the server-side refusal fallback hands a declined request to: Claude Opus 5.5 falls
+    # back to Claude Opus 5 or Claude Opus 4.8, Claude Sonnet 5.5 to Claude Sonnet 5 (Claude
+    # Fable 5.1 to Claude Opus 5 or 4.8). Each attempt is billed at its own model's rates.
     "claude-opus-5": Price(5.00, 25.00),
     "claude-opus-4-8": Price(5.00, 25.00),
     "claude-sonnet-5": Price(2.00, 10.00),
@@ -43,3 +48,18 @@ def cost_usd(provider: str, model: str, input_tokens: int, output_tokens: int) -
     if price is None:
         return None
     return (input_tokens * price.input_per_mtok + output_tokens * price.output_per_mtok) / 1e6
+
+
+def usage_cost(provider: str, usage: Iterable[ModelUsage]) -> float | None:
+    """Cost in USD of calls whose attempts may have run on different models.
+
+    Every attempt is priced at its own model's rate (a request declined by one model and served
+    by its fallback pays for both); None when any attempt ran on a model without a known price.
+    """
+    total = 0.0
+    for part in usage:
+        cost = cost_usd(provider, part.model, part.input_tokens, part.output_tokens)
+        if cost is None:
+            return None
+        total += cost
+    return total

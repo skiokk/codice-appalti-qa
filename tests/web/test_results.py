@@ -115,3 +115,45 @@ def test_config_values() -> None:
         ("Ricerche confrontate", "lessicale, ibrida"),
         ("Valori di k", "1, 5"),
     ]
+
+
+def test_answer_run_shows_published_retrieval_comparison(tmp_path: Path) -> None:
+    (tmp_path / "latest.json").write_text(
+        json.dumps(
+            {
+                "run_id": "answers1",
+                "retrieval": {"overall": {"recall@5": 0.75}},
+                "answer": {"overall": {"correctness": 0.5}},
+            }
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / "latest_retrieval.json").write_text(
+        json.dumps(
+            {
+                "run_id": "retrieval1",
+                "retrieval_by_mode": {
+                    "lexical": {"overall": {"recall@5": 0.5}},
+                    "hybrid": {"overall": {"recall@5": 0.75}},
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    view = load_results(tmp_path / "latest.json")
+    assert view is not None
+    assert view.run_id == "answers1"
+    table = view.sections[0].breakdowns[0]
+    assert table.caption == "Recupero delle fonti: per tipo di ricerca (esecuzione retrieval1)"
+    assert table.rows == [("Lessicale", ["50,0%"]), ("Ibrida", ["75,0%"])]
+    assert [section.title for section in view.sections] == ["Recupero delle fonti", "Risposte"]
+
+
+def test_retrieval_comparison_without_retrieval_section() -> None:
+    view = results_view(
+        {"answer": {"overall": {"correctness": 0.5}}},
+        {"run_id": "r2", "retrieval_by_mode": {"hybrid": {"overall": {"mrr": 0.5}}}},
+    )
+    assert [section.title for section in view.sections] == ["Recupero delle fonti", "Risposte"]
+    assert view.sections[0].overall == []
+    assert view.sections[0].breakdowns[0].rows == [("Ibrida", ["0,500"])]

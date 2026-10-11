@@ -9,17 +9,42 @@ from pathlib import Path
 from typing import Any
 
 DEFAULT_RESULTS_DIR = Path("eval/results")
+LATEST = "latest"  # the published run, read by the web page
+LATEST_RETRIEVAL = "latest_retrieval"  # the published retrieval run, with every mode
 
 Formatter = Callable[[Any], str]
 Column = tuple[str, str, Formatter]  # header, metric name, formatter
 
 
+def _holds_answers(path: Path) -> bool:
+    """Whether `path` is the results file of an answer run."""
+    try:
+        return bool(json.loads(path.read_text(encoding="utf-8")).get("answer"))
+    except (OSError, ValueError, AttributeError):
+        return False
+
+
+def published_names(results: Mapping[str, Any], out_dir: Path = DEFAULT_RESULTS_DIR) -> list[str]:
+    """The names (without suffix) under which `write_results(..., latest=True)` publishes a run.
+
+    An answer run is published as `latest`. A retrieval run (results for each mode) is published
+    as `latest_retrieval`, so that its report survives later answer runs, and also as `latest`
+    unless that already holds an answer run, which a retrieval run must not replace.
+    """
+    if "retrieval_by_mode" not in results:
+        return [LATEST]
+    if _holds_answers(out_dir / f"{LATEST}.json"):
+        return [LATEST_RETRIEVAL]
+    return [LATEST, LATEST_RETRIEVAL]
+
+
 def write_results(
     results: Mapping[str, Any], out_dir: Path = DEFAULT_RESULTS_DIR, *, latest: bool = True
 ) -> Path:
-    """Write `<run_id>.json` and `<run_id>.md`; with `latest`, also `latest.json` / `latest.md`.
+    """Write `<run_id>.json` and `<run_id>.md`; with `latest`, also publish them.
 
-    Returns the path of the JSON file.
+    Published copies are written under each of `published_names` (`latest.json`,
+    `latest_retrieval.md`, ...). Returns the path of the run's JSON file.
     """
     out_dir.mkdir(parents=True, exist_ok=True)
     run_id = results["run_id"]
@@ -29,8 +54,9 @@ def write_results(
     path.write_text(document, encoding="utf-8")
     (out_dir / f"{run_id}.md").write_text(report, encoding="utf-8")
     if latest:
-        (out_dir / "latest.json").write_text(document, encoding="utf-8")
-        (out_dir / "latest.md").write_text(report, encoding="utf-8")
+        for name in published_names(results, out_dir):
+            (out_dir / f"{name}.json").write_text(document, encoding="utf-8")
+            (out_dir / f"{name}.md").write_text(report, encoding="utf-8")
     return path
 
 

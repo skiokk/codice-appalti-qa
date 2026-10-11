@@ -2,7 +2,8 @@
 
 Each retrieved unit is sent as its own plain-text document with citations enabled, so every cited
 span comes back with the index of its document and the exact quoted text. The request opts in to
-server-side refusal fallback; a refusal that survives it is reported as an abstention.
+server-side refusal fallback; a refusal that survives it is reported as an abstention. Token counts
+cover every attempt of a call that fell back, and `Generation.iterations` lists them by model.
 """
 
 from __future__ import annotations
@@ -18,10 +19,12 @@ from anthropic.types.beta import (
     BetaMessageParam,
     BetaRequestDocumentBlockParam,
     BetaTextBlockParam,
+    BetaUsage,
 )
+from anthropic.types.beta.beta_iterations_usage import BetaIterationsUsageItem
 
 from appalti_qa.config import ProviderName, Settings, get_settings
-from appalti_qa.llm.base import Generation, LLMError
+from appalti_qa.llm.base import Generation, LLMError, ModelUsage
 from appalti_qa.llm.prompts import (
     ABSTAIN_TOKEN,
     SYSTEM_PROMPT,
@@ -55,15 +58,40 @@ def _with_markers(text: str, indices: Sequence[int]) -> str:
     return f"{body} {markers}{text[len(body) :]}"
 
 
-def _token_usage(message: BetaMessage) -> tuple[int, int]:
-    """(input, output) tokens; input includes tokens written to and read from the cache."""
-    usage = message.usage
-    input_tokens = (
+def _input_tokens(usage: BetaUsage | BetaIterationsUsageItem) -> int:
+    """Input tokens, including those written to and read from the cache."""
+    return (
         usage.input_tokens
         + (usage.cache_creation_input_tokens or 0)
         + (usage.cache_read_input_tokens or 0)
     )
-    return input_tokens, usage.output_tokens
+
+
+def _iterations(message: BetaMessage, requested: str) -> tuple[ModelUsage, ...]:
+    """The usage of every attempt of the call, each with the model that ran it.
+
+    The top-level usage covers only the attempt that produced the returned message. When a
+    server-side fallback ran, `usage.iterations` lists every attempt: a declined one as a
+    `message` entry, the one that served the reply as `fallback_message`, each billed at the rates
+    of its own model. Entries that name no model ran on the requested one.
+    """
+    return tuple(
+        ModelUsage(
+            (None if entry.type == "compaction" else entry.model) or requested,
+            _input_tokens(entry),
+            entry.output_tokens,
+        )
+        for entry in message.usage.iterations or ()
+    )
+
+
+def _usage_fields(message: BetaMessage, requested: str) -> tuple[int, int, tuple[ModelUsage, ...]]:
+    """(input tokens, output tokens, per-attempt usage) of the whole call."""
+    iterations = _iterations(message, requested)
+    if not iterations:
+        return _input_tokens(message.usage), message.usage.output_tokens, ()
+    input_tokens = sum(part.input_tokens for part in iterations)
+    return input_tokens, sum(part.output_tokens for part in iterations), iterations
 
 
 def _api_error_message(exc: anthropic.APIStatusError) -> str:
@@ -115,8 +143,28 @@ class AnthropicProvider:
         )
         refused = message.stop_reason == "refusal"
         text = "" if refused else "".join(b.text for b in message.content if b.type == "text")
+        return self._generation(message, text, [])
+
+    def _generation(self, message: BetaMessage, text: str, citations: list[Citation]) -> Generation:
+        """A Generation of `message`, with the tokens of every attempt of the call."""
+        input_tokens, output_tokens, iterations = _usage_fields(message, self.model)
+        logger.info(
+            "Claude response: model=%s stop=%s tokens=%d/%d attempts=%s",
+            message.model,
+            message.stop_reason,
+            input_tokens,
+            output_tokens,
+            ", ".join(part.model for part in iterations) or message.model,
+        )
         return Generation(
-            text, [], message.model, self.name, *_token_usage(message), message.stop_reason
+            text,
+            citations,
+            message.model,
+            self.name,
+            input_tokens,
+            output_tokens,
+            message.stop_reason,
+            iterations,
         )
 
     def _create(
@@ -155,23 +203,13 @@ class AnthropicProvider:
             ) from exc
         except anthropic.APIError as exc:
             raise LLMError(f"Anthropic API error ({type(exc).__name__})") from exc
-        logger.info(
-            "Claude response: model=%s stop=%s tokens=%d/%d",
-            message.model,
-            message.stop_reason,
-            message.usage.input_tokens,
-            message.usage.output_tokens,
-        )
         return message
 
     def _parse(self, message: BetaMessage, sources: Sequence[Hit]) -> Generation:
-        input_tokens, output_tokens = _token_usage(message)
         if message.stop_reason == "refusal":
             category = message.stop_details.category if message.stop_details else None
             logger.warning("Claude declined the request (category: %s)", category)
-            return Generation(
-                ABSTAIN_TOKEN, [], message.model, self.name, input_tokens, output_tokens, "refusal"
-            )
+            return self._generation(message, ABSTAIN_TOKEN, [])
         if message.stop_reason == "max_tokens":
             logger.warning(
                 "Claude answer truncated at max_tokens=%d", self._settings.llm_max_tokens
@@ -196,12 +234,4 @@ class AnthropicProvider:
                 if index not in indices:
                     indices.append(index)
             parts.append(_with_markers(block.text, indices))
-        return Generation(
-            "".join(parts).strip(),
-            citations,
-            message.model,
-            self.name,
-            input_tokens,
-            output_tokens,
-            message.stop_reason,
-        )
+        return self._generation(message, "".join(parts).strip(), citations)

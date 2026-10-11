@@ -24,7 +24,7 @@ Italia, plus a JSON API. `create_app()` works with no arguments (the Docker imag
 | `GET /` | question form, "Testo vigente al" date (default today, bounded by the corpus range), example questions |
 | `POST /chiedi` | answer: htmx partial, or the full page without JavaScript |
 | `GET /norma/{key}?data=` | text in force at the date and version history of a unit |
-| `GET /valutazione` | latest evaluation run (`eval/results/latest.json`) |
+| `GET /valutazione` | latest evaluation run (`eval/results/latest.json`); after an answer run, the retrieval modes are compared from `latest_retrieval.json` |
 | `GET /informazioni` | "Come funziona": sources, method, limits, privacy, accessibility |
 | `POST /api/v1/answer` (alias `POST /api/ask`) | `{"question", "date"?}` -> `Answer` |
 | `GET /api/v1/search?q=&date=&k=&mode=` | `list[Hit]`, `k` at most 20 |

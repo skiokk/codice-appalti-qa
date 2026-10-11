@@ -7,6 +7,7 @@ import pytest
 from appalti_qa.evaluation.dataset import (
     DatasetError,
     EvalItem,
+    embedding_coverage,
     load_dataset,
     referenced_texts,
     select_items,
@@ -159,3 +160,30 @@ def test_referenced_texts(seeded_conn: psycopg.Connection) -> None:
     assert text.startswith("[Art. 1, comma 1]\n1. Le stazioni appaltanti")
     assert "[Art. 50, comma 1]\n1. Le stazioni appaltanti procedono" in text
     assert "ingegneria e architettura" in text  # the version in force on 2025-01-01
+
+
+@pytest.mark.db
+def test_embedding_coverage(seeded_conn: psycopg.Connection) -> None:
+    """Versions searchable on any of the days, and those embedded by the given model."""
+    june_2024, jan_2025 = date(2024, 6, 1), date(2025, 1, 1)
+    assert embedding_coverage(seeded_conn, "m", [june_2024]) == (0, 3)  # 1/1, 50/1, all:I.3/p1
+    assert embedding_coverage(seeded_conn, "m", [june_2024, jan_2025]) == (0, 5)
+    assert embedding_coverage(seeded_conn, "m", [date(2020, 1, 1)]) == (0, 0)
+
+    def embed(key: str, model: str) -> None:
+        seeded_conn.execute(
+            "UPDATE unit_versions v SET embedding = array_fill(0.1, ARRAY[768])::vector,"
+            " embedding_model = %s FROM units u WHERE u.id = v.unit_id AND u.key = %s",
+            (model, key),
+        )
+
+    embed("1/1", "m")
+    embed("50/1", "m")  # both versions
+    embed("all:I.3/p1", "other")  # another model's embedding does not count
+    assert embedding_coverage(seeded_conn, "m", [june_2024]) == (2, 3)
+    assert embedding_coverage(seeded_conn, "m", [june_2024, jan_2025]) == (3, 5)
+    seeded_conn.execute(
+        "UPDATE unit_versions v SET repealed = true FROM units u"
+        " WHERE u.id = v.unit_id AND u.key = '225-bis'"
+    )
+    assert embedding_coverage(seeded_conn, "m", [jan_2025, jan_2025]) == (2, 3)  # repealed: out

@@ -7,12 +7,12 @@ scored by a lexical-overlap judge.
 
 | Module | Content |
 | --- | --- |
-| `dataset.py` | `EvalItem`, `load_dataset`, `validate_dataset`, `select_items`, corpus lookups |
-| `metrics.py` | `retrieval_metrics`, `answer_metrics`, grouping by kind and category |
+| `dataset.py` | `EvalItem`, `load_dataset`, `validate_dataset`, `select_items`, corpus lookups, `embedding_coverage` |
+| `metrics.py` | `retrieval_metrics`, `answer_metrics`, `answer_cost`, grouping by kind and category |
 | `judge.py` | `JudgeVerdict`, `LLMJudge` (Italian rubric, JSON verdict), `OverlapJudge`, `get_judge` |
-| `pricing.py` | token prices and `cost_usd` |
+| `pricing.py` | token prices, `cost_usd`, `usage_cost` (each model attempt at its own rate) |
 | `runner.py` | run ids, results documents for retrieval and answer runs |
-| `report.py` | `write_results`, `render_report` (markdown), `render_comparison` |
+| `report.py` | `write_results`, `published_names`, `render_report` (markdown), `render_comparison` |
 | `xlsx.py` | `export_xlsx` / `import_xlsx`: the human review round trip |
 | `yaml_writer.py` | writes the dataset back, rewriting only changed lines and keeping comments |
 | `cli.py` | `cli_main`, the `appalti-qa eval` commands |
@@ -60,8 +60,9 @@ separate calls at the largest cutoff (10), so a question with refs is searched t
 - `abstention_accuracy`: the system abstains on unanswerable questions and answers the others;
   `abstention_rate` is reported too.
 - `latency_p50_ms`, `latency_p95_ms` (nearest rank), token totals, `cost_usd` and
-  `judge_cost_usd`; `cost_unknown` and `judge_cost_unknown` count the answers and judgements
-  served by a model without a known price, which the totals leave out.
+  `judge_cost_usd` (every attempt of a call that fell back to another model, see Cost);
+  `cost_unknown` and `judge_cost_unknown` count the answers and judgements that used a model
+  without a known price, which the totals leave out.
 - A failing answer or judge call (timeout, rate limit, unparsable verdict) is recorded on the item
   (`error`, `judge_error`), counted, and left out of the averages it affects.
 
@@ -79,37 +80,69 @@ measure, and the report says so.
 
 ## Cost
 
-List prices per million tokens, without prompt-caching discounts:
+List prices per million tokens, without prompt-caching discounts (tokens written to or read from
+the cache count as input):
 
 | Model | Input | Output |
 | --- | --- | --- |
 | `claude-opus-5-5` | $4.00 | $20.00 |
 | `claude-sonnet-5-5` | $2.00 | $10.00 |
-| `claude-haiku-5-5` | $0.10 | $0.50 |
-| `claude-fable-5-1` (refusal fallback) | $10.00 | $50.00 |
-| `claude-opus-5`, `claude-opus-4-8` (refusal fallback) | $5.00 | $25.00 |
-| `claude-sonnet-5` (refusal fallback) | $2.00 | $10.00 |
+| `claude-haiku-5-5` (prompts up to 100K tokens) | $0.10 | $0.50 |
+| `claude-fable-5-1` | $10.00 | $50.00 |
+| `claude-opus-5`, `claude-opus-4-8` (refusal fallback of Claude Opus 5.5) | $5.00 | $25.00 |
+| `claude-sonnet-5` (refusal fallback of Claude Sonnet 5.5) | $2.00 | $10.00 |
 | Groq models (free tier), fake provider | $0 | $0 |
 
-Known prices are summed; an Anthropic model missing from the table is counted in `cost_unknown`
-instead of adding a wrong number, and the total is `null` only when no answer has a known price.
+Requests to Claude opt in to the server-side refusal fallback, so one call can run on more than
+one model: a request the requested model declines, even after it has started writing, is re-run
+on its fallback model, and each attempt is billed at its own model's rate. The response's
+top-level usage covers only the attempt that produced the reply; `usage.iterations` lists every
+attempt with its model. `AnthropicProvider` reports the tokens of all attempts and keeps them per
+model in `Generation.iterations`, and the evaluation prices each attempt separately
+(`usage_cost`): the judge from its own call, the answers through a `UsageMeter` around the
+answering provider, since an `Answer` carries only the model that wrote it and the token totals.
+Every reported attempt is priced, so a decline before any output that turns out not to be billed
+is counted anyway, and the total is an upper bound in that case.
+
+Known prices are summed; a call that used an Anthropic model missing from the table is counted in
+`cost_unknown` instead of adding a wrong number, and the total is `null` only when no answer has a
+known price.
 
 ## Results
 
 `write_results` writes `eval/results/<run_id>.json` and `<run_id>.md`, where the run id is
 `<UTC timestamp>_<provider>_<model>` (for example `20261011T120000Z_anthropic_claude-opus-5-5`).
-With `--publish` it also copies both to `latest.json` / `latest.md`, which the web page
-`/valutazione` reads. `answers --publish` is refused before anything runs (exit 2, nothing
-written) when the answering provider or the judge resolves to the fake provider, so placeholder
-numbers are never published. The JSON
-follows `docs/architecture.md` and adds, per item, the expected refs, the answer text and
-citations, citation precision and recall, tokens, cost and the judge verdict. Retrieval-only runs
-(`<timestamp>_retrieval.json`) add `retrieval_by_mode` and per-item rankings for each mode, and
-replace `latest.json` only with `--publish` (useful before any answer run exists).
+The JSON follows `docs/architecture.md` and adds, per item, the expected refs, the answer text
+and citations, citation precision and recall, tokens, cost and the judge verdict. Retrieval-only
+runs (`<timestamp>_retrieval.json`) add `retrieval_by_mode` and per-item rankings for each mode.
+
+Only `--publish` updates the published files (`published_names`):
+
+| Run | Published as |
+| --- | --- |
+| `answers --publish` | `latest.json` / `latest.md`, read by the web page `/valutazione` |
+| `retrieval --publish` | `latest_retrieval.json` / `latest_retrieval.md`, the stable report with every mode; also `latest.json` / `latest.md` unless they hold an answer run |
+
+So the per-mode retrieval report survives later answer runs, and a retrieval run never replaces
+published answers on the web page (useful before any answer run exists). When `latest.json`
+holds an answer run, the web page takes the comparison of the modes from
+`latest_retrieval.json`.
+
+Publishing is refused before anything runs (exit 2, nothing written) when the numbers would not
+describe the system:
+
+- `answers --publish`, when the answering provider or the judge resolves to the fake provider
+  (placeholder numbers);
+- `retrieval --publish` with the semantic or hybrid mode, and `answers --publish` retrieving with
+  one of them, when `EMBEDDING_MODEL=fake` or fewer than 99% of the versions searchable on the
+  evaluated dates (in force on at least one question's `vigenza`, not repealed) have an embedding
+  from the configured model (`embedding_coverage`). Semantic search only returns versions embedded
+  by that model, so it would come back empty or partial and hybrid search would degrade to
+  lexical. Lexical-only runs need no embeddings.
 
 ```bash
 appalti-qa eval validate --db
-appalti-qa eval retrieval --all --k 1,3,5,10 --publish # all three modes
+appalti-qa eval retrieval --all --k 1,3,5,10 --publish # all three modes -> latest_retrieval.md
 appalti-qa eval answers --provider anthropic --judge-provider anthropic --publish
 appalti-qa eval answers --provider groq --all --delay 2 # free tier rate limits
 appalti-qa eval report eval/results/latest.json

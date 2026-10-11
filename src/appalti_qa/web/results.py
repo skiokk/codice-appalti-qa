@@ -1,7 +1,9 @@
 """View of the latest evaluation run (`eval/results/latest.json`) for the "Valutazione" page.
 
 The file is produced by `appalti_qa.evaluation`; this module only reads it and tolerates missing
-or unexpected fields, so that a partial results file still renders.
+or unexpected fields, so that a partial results file still renders. When the latest run is an
+answer run, which does not compare retrieval modes, the comparison is taken from the latest
+published retrieval run (`latest_retrieval.json` next to it).
 """
 
 from __future__ import annotations
@@ -20,6 +22,7 @@ from appalti_qa.web.formatting import format_decimal, format_int, format_percent
 logger = logging.getLogger(__name__)
 
 RESULTS_PATH = Path("eval/results/latest.json")
+RETRIEVAL_RESULTS_NAME = "latest_retrieval.json"
 MAX_ITEMS = 500
 
 _METRIC_LABELS = {
@@ -237,20 +240,32 @@ def _item(raw: Mapping[str, Any], mode: object) -> ItemRow:
     )
 
 
-def _by_mode(raw: Mapping[str, Any]) -> MetricTable | None:
+def _by_mode(raw: Mapping[str, Any], run_id: object = None) -> MetricTable | None:
     """Overall retrieval metrics of each mode compared in a retrieval-only run."""
     modes = {mode: _mapping(metrics).get("overall") for mode, metrics in raw.items()}
-    return _breakdown("Recupero delle fonti: per tipo di ricerca", "Ricerca", modes)
+    caption = "Recupero delle fonti: per tipo di ricerca"
+    if run_id:
+        caption += f" (esecuzione {run_id})"
+    return _breakdown(caption, "Ricerca", modes)
 
 
-def results_view(raw: Mapping[str, Any]) -> ResultsView:
+def results_view(
+    raw: Mapping[str, Any], retrieval_run: Mapping[str, Any] | None = None
+) -> ResultsView:
+    """The page data of a run; `retrieval_run` supplies the mode comparison it lacks."""
     dataset = _mapping(raw.get("dataset"))
     sections = [
         _section(title, _mapping(raw.get(key)))
         for key, title in (("retrieval", "Recupero delle fonti"), ("answer", "Risposte"))
     ]
     by_mode = _by_mode(_mapping(raw.get("retrieval_by_mode")))
-    if by_mode and sections[0]:
+    if by_mode is None and retrieval_run is not None:
+        by_mode = _by_mode(
+            _mapping(retrieval_run.get("retrieval_by_mode")), retrieval_run.get("run_id", "n/d")
+        )
+    if by_mode:
+        if sections[0] is None:
+            sections[0] = MetricSection("Recupero delle fonti", [], [])
         sections[0].breakdowns.insert(0, by_mode)
     items = raw.get("items") if isinstance(raw.get("items"), list) else []
     mode = _mapping(raw.get("config")).get("retrieval_mode")
@@ -269,8 +284,7 @@ def results_view(raw: Mapping[str, Any]) -> ResultsView:
     )
 
 
-def load_results(path: Path = RESULTS_PATH) -> ResultsView | None:
-    """The results view, or None when the file is missing or unreadable."""
+def _read(path: Path) -> Mapping[str, Any] | None:
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
     except FileNotFoundError:
@@ -281,4 +295,15 @@ def load_results(path: Path = RESULTS_PATH) -> ResultsView | None:
     if not isinstance(raw, Mapping):
         logger.warning("Unexpected evaluation results format in %s", path)
         return None
-    return results_view(raw)
+    return raw
+
+
+def load_results(path: Path = RESULTS_PATH) -> ResultsView | None:
+    """The results view, or None when the file is missing or unreadable."""
+    raw = _read(path)
+    if raw is None:
+        return None
+    retrieval_run = None
+    if not raw.get("retrieval_by_mode"):
+        retrieval_run = _read(path.with_name(RETRIEVAL_RESULTS_NAME))
+    return results_view(raw, retrieval_run)

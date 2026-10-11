@@ -1,7 +1,7 @@
 """LLM providers that answer from retrieved sources with citations."""
 
 from appalti_qa.llm.anthropic_provider import AnthropicProvider
-from appalti_qa.llm.base import Generation, LLMError, LLMProvider
+from appalti_qa.llm.base import Generation, LLMError, LLMProvider, ModelUsage, UsageMeter
 from appalti_qa.llm.factory import get_provider
 from appalti_qa.llm.fake import FakeProvider
 from appalti_qa.llm.groq_provider import GroqProvider
@@ -15,5 +15,7 @@ __all__ = [
     "GroqProvider",
     "LLMError",
     "LLMProvider",
+    "ModelUsage",
+    "UsageMeter",
     "get_provider",
 ]

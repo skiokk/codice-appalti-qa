@@ -14,6 +14,7 @@ import pytest
 from appalti_qa.config import Settings
 from appalti_qa.llm import ABSTAIN_TOKEN, AnthropicProvider, LLMError
 from appalti_qa.llm.anthropic_provider import FALLBACK_BETA
+from appalti_qa.llm.base import ModelUsage
 from appalti_qa.llm.prompts import SYSTEM_PROMPT, source_title
 from appalti_qa.models import Hit
 
@@ -170,6 +171,81 @@ def test_fallback_block_is_skipped_and_serving_model_reported(
     assert generation.model == "claude-opus-4-8"
 
 
+def iteration(kind: str, model: str | None, tokens: int, output: int, **cache: int) -> dict:
+    entry = {
+        "type": kind,
+        "input_tokens": tokens,
+        "output_tokens": output,
+        "cache_creation_input_tokens": cache.get("written", 0),
+        "cache_read_input_tokens": cache.get("read", 0),
+    }
+    return entry if model is None else {**entry, "model": model}
+
+
+def test_fallback_after_output_counts_every_attempt(
+    settings: Settings, hits: list[Hit], at_date: date
+) -> None:
+    """The top-level usage covers only the serving attempt; `usage.iterations` has them all."""
+    reply = message(
+        [
+            {
+                "type": "fallback",
+                "from": {"model": "claude-opus-5-5"},
+                "to": {"model": "claude-opus-5"},
+                "trigger": {"type": "refusal"},
+            },
+            text("Risposta", cite(0, "Le stazioni appaltanti")),
+        ],
+        model="claude-opus-5",
+        usage={
+            "input_tokens": 1000,
+            "output_tokens": 80,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 300,
+            "iterations": [
+                iteration("message", "claude-opus-5-5", 1000, 45, written=300),
+                iteration("fallback_message", "claude-opus-5", 1000, 80, read=300),
+            ],
+        },
+    )
+    generation = provider_for(settings, replying(reply)).generate("x", hits, at_date=at_date)
+    assert generation.model == "claude-opus-5"
+    assert generation.iterations == (
+        ModelUsage("claude-opus-5-5", 1300, 45),
+        ModelUsage("claude-opus-5", 1300, 80),
+    )
+    assert generation.model_usage == generation.iterations
+    assert (generation.input_tokens, generation.output_tokens) == (2600, 125)
+
+
+def test_iterations_without_a_model_ran_on_the_requested_one(settings: Settings) -> None:
+    usage = {
+        "input_tokens": 500,
+        "output_tokens": 20,
+        "iterations": [
+            iteration("message", None, 500, 20),
+            iteration("compaction", None, 40, 10),
+        ],
+    }
+    reply = message([text('{"verdict": "correct"}')], usage=usage)
+    generation = provider_for(settings, replying(reply)).complete("s", "p")
+    assert generation.iterations == (
+        ModelUsage("claude-opus-5-5", 500, 20),
+        ModelUsage("claude-opus-5-5", 40, 10),
+    )
+    assert (generation.input_tokens, generation.output_tokens) == (540, 30)
+
+
+def test_usage_without_iterations_is_the_whole_call(
+    settings: Settings, hits: list[Hit], at_date: date
+) -> None:
+    generation = provider_for(settings, replying(message([text("Risposta")]))).generate(
+        "x", hits, at_date=at_date
+    )
+    assert generation.iterations == ()
+    assert generation.model_usage == (ModelUsage("claude-opus-5-5", 1500, 80),)
+
+
 def test_refusal_is_reported_as_abstention(
     settings: Settings, hits: list[Hit], at_date: date
 ) -> None:
@@ -180,6 +256,26 @@ def test_refusal_is_reported_as_abstention(
     assert generation.text == ABSTAIN_TOKEN
     assert generation.citations == []
     assert generation.stop_reason == "refusal"
+    assert (generation.input_tokens, generation.output_tokens) == (1500, 80)
+
+
+def test_refusal_of_the_whole_chain_counts_every_attempt(
+    settings: Settings, hits: list[Hit], at_date: date
+) -> None:
+    """The fallback model declined too: both attempts are reported."""
+    usage = {
+        "input_tokens": 900,
+        "output_tokens": 0,
+        "iterations": [
+            iteration("message", "claude-opus-5-5", 900, 30),
+            iteration("message", "claude-opus-5", 900, 0),
+        ],
+    }
+    reply = message([], model="claude-opus-5", stop_reason="refusal", usage=usage)
+    generation = provider_for(settings, replying(reply)).generate("x", hits, at_date=at_date)
+    assert generation.text == ABSTAIN_TOKEN and generation.stop_reason == "refusal"
+    assert [part.model for part in generation.iterations] == ["claude-opus-5-5", "claude-opus-5"]
+    assert (generation.input_tokens, generation.output_tokens) == (1800, 30)
 
 
 def test_no_sources_means_no_request(settings: Settings, at_date: date) -> None:
