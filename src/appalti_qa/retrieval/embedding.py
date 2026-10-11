@@ -227,21 +227,52 @@ def embed_missing(
 
 
 def cli_embed(args: argparse.Namespace) -> int:
-    """`appalti-qa embed`: embed the versions that lack an embedding from the configured model."""
+    """`appalti-qa embed`: embed the versions and their passages that lack an embedding.
+
+    Units first (one vector per version), then the passages of `passages.split_passages`: the
+    versions without passages are split, the passage texts without an embedding from the
+    configured model are embedded, and the hub scores are refreshed when anything changed.
+    """
+    from appalti_qa.retrieval.passages import build_passages, embed_passages, update_hub_scores
+
     settings = get_settings()
     embedder = get_embedder(settings)
+    model = embedder.model_name
 
-    def report(done: int, total: int) -> None:
-        print(f"  {done}/{total} passages", flush=True)
+    def reporter(what: str) -> Progress:
+        def report(done: int, total: int) -> None:
+            print(f"  {done}/{total} {what}", flush=True)
 
-    print(f"Embedding missing versions with {embedder.model_name}...")
+        return report
+
+    print(f"Embedding missing versions and passages with {model}...")
     try:
         with connect(settings.database_url) as conn:
+            batch, limit = args.batch_size, args.limit
             updated = embed_missing(
-                conn, embedder, batch_size=args.batch_size, limit=args.limit, progress=report
+                conn, embedder, batch_size=batch, limit=limit, progress=reporter("unit texts")
             )
+            if updated:
+                print(f"Done: {updated} versions updated.")
+            built = build_passages(conn)
+            if built:
+                print(f"Split {built} versions into passages.")
+            texts = embed_passages(
+                conn, embedder, batch_size=batch, limit=limit, progress=reporter("passage texts")
+            )
+            if texts:
+                print(f"Done: {texts} passage texts embedded.")
+            unscored = conn.execute(
+                "SELECT count(*) FROM unit_passages"
+                " WHERE embedding_model = %s AND hub_score IS NULL",
+                (model,),
+            ).fetchone()[0]
+            conn.commit()
+            if updated or built or texts or unscored:
+                print(f"Hub scores of {update_hub_scores(conn, embedder)} passages refreshed.")
+            else:
+                print("Nothing to embed.")
     except psycopg.OperationalError as exc:
         print(f"Database not reachable: {exc}")
         return 1
-    print(f"Done: {updated} versions updated." if updated else "Nothing to embed.")
     return 0

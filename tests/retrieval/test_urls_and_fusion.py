@@ -36,3 +36,21 @@ def test_rrf_sums_reciprocal_ranks() -> None:
 def test_rrf_handles_empty_lists() -> None:
     assert reciprocal_rank_fusion([[], []]) == {}
     assert list(reciprocal_rank_fusion([[], ["x", "y"]], k=1)) == ["x", "y"]
+
+
+def test_weighted_rrf_scales_each_list() -> None:
+    fused = reciprocal_rank_fusion([["a", "b"], ["b", "a"]], k=60, weights=[2.0, 1.0])
+    assert fused == pytest.approx({"a": 2 / 61 + 1 / 62, "b": 2 / 62 + 1 / 61})
+    assert list(fused) == ["a", "b"]  # the heavier list decides between symmetric ranks
+    flipped = reciprocal_rank_fusion([["a", "b"], ["b", "a"]], k=60, weights=[1.0, 2.0])
+    assert list(flipped) == ["b", "a"]
+
+
+def test_rrf_with_unit_weights_is_plain_rrf() -> None:
+    rankings = [["a", "b", "c"], ["c", "a"]]
+    assert reciprocal_rank_fusion(rankings, weights=[1.0, 1.0]) == reciprocal_rank_fusion(rankings)
+
+
+def test_rrf_needs_one_weight_per_list() -> None:
+    with pytest.raises(ValueError):
+        reciprocal_rank_fusion([["a"], ["b"]], weights=[1.0])

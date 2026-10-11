@@ -12,6 +12,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 ProviderName = Literal["fake", "anthropic", "groq"]
 Effort = Literal["low", "medium", "high", "xhigh", "max"]
 RetrievalMode = Literal["lexical", "semantic", "hybrid"]
+SemanticGranularity = Literal["unit", "passage"]
 
 
 class Settings(BaseSettings):
@@ -49,6 +50,10 @@ class Settings(BaseSettings):
     default_top_k: int = Field(default=8, gt=0, le=50)
     retrieval_mode: RetrievalMode = "hybrid"
     rrf_k: int = Field(default=60, gt=0)
+    fusion_depth: int = Field(default=4, gt=0)  # hybrid fuses two lists of fusion_depth * k
+    lexical_weight: float = Field(default=1.0, ge=0)  # weight of the lexical list in RRF
+    semantic_granularity: SemanticGranularity = "unit"  # "passage": best sub-passage (max-sim)
+    hubness_weight: float = Field(default=0.0, ge=0)  # passage score -= weight * hub_score
     min_relevance_score: float = 0.0
 
     # Public demo limits

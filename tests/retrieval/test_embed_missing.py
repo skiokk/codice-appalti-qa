@@ -102,8 +102,10 @@ def test_cli_embed_with_the_fake_model(
 
     assert cli_embed(argparse.Namespace(batch_size=4, limit=None)) == 0
     output = capsys.readouterr().out
-    assert "4/5 passages" in output and "5/5 passages" in output
+    assert "4/5 unit texts" in output and "5/5 unit texts" in output
     assert f"Done: {SEED_VERSIONS} versions updated." in output
+    assert f"Split {SEED_VERSIONS} versions into passages." in output
+    assert "passage texts embedded." in output and "Hub scores of" in output
 
     assert cli_embed(argparse.Namespace(batch_size=4, limit=None)) == 0
     assert "Nothing to embed." in capsys.readouterr().out

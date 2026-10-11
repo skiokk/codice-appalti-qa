@@ -91,6 +91,24 @@ CREATE INDEX IF NOT EXISTS unit_versions_tsv_idx ON unit_versions USING gin (tsv
 CREATE INDEX IF NOT EXISTS unit_versions_embedding_idx
     ON unit_versions USING hnsw (embedding vector_cosine_ops);
 
+-- Sub-passages of each version for passage-level semantic search (retrieval/passages.py):
+-- ordinal 0 is the whole unit; a version scores its best passage. Built by `appalti-qa embed`.
+CREATE TABLE IF NOT EXISTS unit_passages (
+    id               bigserial PRIMARY KEY,
+    version_id       bigint NOT NULL REFERENCES unit_versions (id) ON DELETE CASCADE,
+    ordinal          smallint NOT NULL,            -- 0 = the whole unit, then in text order
+    text             text NOT NULL,                -- exact string embedded (no model prefix)
+    text_hash        char(64) NOT NULL,            -- sha256 hex of text: embedded once per text
+    scheme           text NOT NULL,                -- splitting rules (passages.PASSAGE_SCHEME)
+    embedding        vector({{EMBEDDING_DIM}}),
+    embedding_model  text,
+    hub_score        real,                         -- mean similarity to the nearest probe queries
+    UNIQUE (version_id, ordinal)
+);
+CREATE INDEX IF NOT EXISTS unit_passages_hash_idx ON unit_passages (text_hash);
+CREATE INDEX IF NOT EXISTS unit_passages_embedding_idx
+    ON unit_passages USING hnsw (embedding vector_cosine_ops);
+
 -- Answered questions (public demo usage, rate limiting, latency and cost tracking).
 CREATE TABLE IF NOT EXISTS qa_log (
     id             bigserial PRIMARY KEY,

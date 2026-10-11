@@ -101,6 +101,29 @@ def test_reload_keeps_embeddings(db_conn: psycopg.Connection, fixture_corpus) ->
     ).fetchone() == (1,)
 
 
+def test_reload_keeps_passages(db_conn: psycopg.Connection, fixture_corpus) -> None:
+    from appalti_qa.retrieval import FakeEmbedder
+    from appalti_qa.retrieval.passages import build_passages, embed_passages
+
+    load_corpus(fixture_corpus, db_conn)
+    build_passages(db_conn)
+    embed_passages(db_conn, FakeEmbedder())
+    passages = """
+        SELECT u.key, v.valid_from, p.ordinal, p.text, p.scheme, p.embedding_model,
+            p.embedding::text
+        FROM unit_passages p JOIN unit_versions v ON v.id = p.version_id
+        JOIN units u ON u.id = v.unit_id ORDER BY u.ordinal, v.valid_from, p.ordinal
+    """
+    before = db_conn.execute(passages).fetchall()
+    assert len(before) > len(fixture_corpus.versions)  # some versions have sub-passages
+
+    load_corpus(fixture_corpus, db_conn)
+
+    assert db_conn.execute(passages).fetchall() == before
+    assert build_passages(db_conn) == 0
+    assert embed_passages(db_conn, FakeEmbedder()) == 0
+
+
 def test_other_acts_are_untouched(db_conn: psycopg.Connection, fixture_corpus) -> None:
     other = db_conn.execute(
         "INSERT INTO acts (code, urn, title, issued_on) VALUES ('99X99999', 'urn:other', 'Altro',"

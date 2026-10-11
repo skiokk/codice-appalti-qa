@@ -27,6 +27,23 @@ FROM kept_embeddings k, units u
 WHERE u.id = v.unit_id AND u.act_id = %s
   AND v.text_hash = k.text_hash AND v.heading IS NOT DISTINCT FROM k.heading
 """
+# Passages (and their embeddings) depend only on the heading and text of a version: keep them too.
+_KEEP_PASSAGES = """
+CREATE TEMP TABLE kept_passages ON COMMIT DROP AS
+SELECT DISTINCT ON (v.text_hash, v.heading, p.ordinal) v.text_hash AS version_hash, v.heading,
+    p.ordinal, p.text, p.text_hash, p.scheme, p.embedding, p.embedding_model, p.hub_score
+FROM unit_passages p JOIN unit_versions v ON v.id = p.version_id JOIN units u ON u.id = v.unit_id
+WHERE u.act_id = %s
+ORDER BY v.text_hash, v.heading, p.ordinal, p.id DESC
+"""
+_RESTORE_PASSAGES = """
+INSERT INTO unit_passages (version_id, ordinal, text, text_hash, scheme, embedding,
+    embedding_model, hub_score)
+SELECT v.id, k.ordinal, k.text, k.text_hash, k.scheme, k.embedding, k.embedding_model, k.hub_score
+FROM unit_versions v JOIN units u ON u.id = v.unit_id
+JOIN kept_passages k ON k.version_hash = v.text_hash AND k.heading IS NOT DISTINCT FROM v.heading
+WHERE u.act_id = %s
+"""
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,8 +59,9 @@ def load_corpus(corpus: VersionedCorpus, conn: psycopg.Connection) -> LoadStats:
     """Replace the act's snapshots, events, units and versions in one transaction; commits.
 
     Idempotent: loading the same corpus twice gives the same rows. Embeddings already computed
-    for a (text_hash, heading) pair are restored on the new rows, so re-ingesting after an
-    amendment only leaves the changed texts to embed.
+    for a (text_hash, heading) pair, and the passages split from it (`unit_passages`, with their
+    embeddings), are restored on the new rows, so re-ingesting after an amendment only leaves the
+    changed texts to embed.
     """
     act = corpus.act
     with conn.transaction(), conn.cursor() as cur:
@@ -57,6 +75,7 @@ def load_corpus(corpus: VersionedCorpus, conn: psycopg.Connection) -> LoadStats:
         )
         act_id = cur.fetchone()[0]
         cur.execute(_KEEP_EMBEDDINGS, (act_id,))
+        cur.execute(_KEEP_PASSAGES, (act_id,))
         for table in ("units", "events", "snapshots"):  # unit_versions cascade from units
             cur.execute(f"DELETE FROM {table} WHERE act_id = %s", (act_id,))
 
@@ -111,6 +130,7 @@ def load_corpus(corpus: VersionedCorpus, conn: psycopg.Connection) -> LoadStats:
         )
         cur.execute(_RESTORE_EMBEDDINGS, (act_id,))
         embeddings_kept = cur.rowcount
+        cur.execute(_RESTORE_PASSAGES, (act_id,))
     if not conn.autocommit:
         conn.commit()
     stats = LoadStats(

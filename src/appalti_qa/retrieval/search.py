@@ -29,14 +29,17 @@ from appalti_qa.keys import is_valid_key
 from appalti_qa.models import Event, HeadingChange, Hit, UnitVersion
 from appalti_qa.retrieval.embedding import Embedder, get_embedder
 from appalti_qa.retrieval.fusion import reciprocal_rank_fusion
+from appalti_qa.retrieval.passages import max_sim
 from appalti_qa.retrieval.refs import extract_refs
 from appalti_qa.retrieval.urls import normattiva_url
 
 logger = logging.getLogger(__name__)
 
-FUSION_DEPTH = 4  # hybrid mode fuses a lexical and a semantic list of FUSION_DEPTH * k each
 PINNED_SCORE = 1.0  # base score of units the query cites explicitly (above any RRF score)
 HNSW_EF_SEARCH = (100, 1000)  # bounds for hnsw.ef_search; pgvector rejects values above 1000
+# Passage search reads the nearest PASSAGE_POOL * limit passages (within HNSW_EF_SEARCH) and keeps
+# each version's best one, so a long unit with many close passages cannot fill the list alone.
+PASSAGE_POOL = 10
 
 _IN_FORCE = "v.valid_from <= %(at)s AND (v.valid_to IS NULL OR v.valid_to > %(at)s)"
 _SEARCHABLE = f"{_IN_FORCE} AND NOT v.repealed"
@@ -68,6 +71,18 @@ _SEMANTIC_SQL = f"""
     WHERE v.embedding IS NOT NULL AND v.embedding_model = %(model)s AND {_SEARCHABLE}
     ORDER BY v.embedding <=> %(vector)s
     LIMIT %(limit)s
+"""
+_PASSAGE_SQL = f"""
+    SELECT p.version_id,
+        1 - (p.embedding <=> %(vector)s) - %(hub)s * coalesce(p.hub_score, 0) AS score
+    FROM unit_passages p JOIN unit_versions v ON v.id = p.version_id
+    WHERE p.embedding IS NOT NULL AND p.embedding_model = %(model)s AND {_SEARCHABLE}
+    ORDER BY p.embedding <=> %(vector)s
+    LIMIT %(pool)s
+"""
+_VERSIONS_SQL = f"""
+    SELECT {_COLUMNS}, 0::float8 AS score {_FROM}
+    WHERE v.id = ANY(%(ids)s)
 """
 _PINNED_SQL = f"""
     SELECT {_COLUMNS}, 0::float8 AS score {_FROM}
@@ -127,8 +142,10 @@ def search(
 ) -> list[Hit]:
     """The `k` units in force at `at_date` that best match `query`, best first.
 
-    Scores: lexical = ts_rank_cd weighted by query-term coverage, semantic = cosine similarity,
-    hybrid = reciprocal rank fusion, with units cited in the query ("art. 50, comma 1") first.
+    Scores: lexical = ts_rank_cd weighted by query-term coverage, semantic = cosine similarity
+    (with `semantic_granularity = "passage"`, of the version's best passage, less
+    `hubness_weight` times its hub score), hybrid = reciprocal rank fusion with the lexical list
+    weighted by `lexical_weight`, with units cited in the query ("art. 50, comma 1") first.
     Semantic search uses only embeddings made by the embedder's model.
     """
     if mode not in get_args(RetrievalMode):
@@ -143,10 +160,9 @@ def search(
         if mode == "lexical":
             ranked = _lexical(c, query, at_date, k)
         elif mode == "semantic":
-            ranked = _semantic(c, query, at_date, k, embedder or get_embedder(settings))
+            ranked = _semantic(c, query, at_date, k, embedder or get_embedder(settings), settings)
         else:
-            active = embedder or get_embedder(settings)
-            ranked = _hybrid(c, query, at_date, k, active, settings.rrf_k)
+            ranked = _hybrid(c, query, at_date, k, embedder or get_embedder(settings), settings)
         return _to_hits(c, ranked[:k], at_date)
 
 
@@ -243,24 +259,43 @@ def _lexical(conn: psycopg.Connection, query: str, at_date: date, limit: int) ->
 
 
 def _semantic(
-    conn: psycopg.Connection, query: str, at_date: date, limit: int, embedder: Embedder
+    conn: psycopg.Connection,
+    query: str,
+    at_date: date,
+    limit: int,
+    embedder: Embedder,
+    settings: Settings,
 ) -> list[_Candidate]:
     model = embedder.model_name
-    if not conn.execute(
-        "SELECT EXISTS (SELECT 1 FROM unit_versions WHERE embedding_model = %s)", (model,)
-    ).fetchone()[0]:
+    passages = settings.semantic_granularity == "passage"
+    if passages and not _has_embeddings(conn, "unit_passages", model):
+        logger.warning("No passage embeddings from %s: using whole units (run `embed`)", model)
+        passages = False
+    if not passages and not _has_embeddings(conn, "unit_versions", model):
         logger.warning("No embeddings from %s: semantic search skipped (run `embed`)", model)
         return []
     vector = embedder.embed_queries([query])[0]
+    pool = PASSAGE_POOL * limit if passages else limit
     # Iterative HNSW scans (pgvector 0.8) keep returning neighbours until enough rows pass the
     # date filter; relaxed order may swap close neighbours, hence the final sort.
     conn.execute(
         "SELECT set_config('hnsw.ef_search', %s, true),"
         " set_config('hnsw.iterative_scan', 'relaxed_order', true)",
-        (str(min(max(HNSW_EF_SEARCH[0], limit), HNSW_EF_SEARCH[1])),),
+        (str(min(max(HNSW_EF_SEARCH[0], pool), HNSW_EF_SEARCH[1])),),
     )
     params = {"vector": vector, "model": model, "at": at_date, "limit": limit}
-    return sorted(_fetch(conn, _SEMANTIC_SQL, params), key=_rank_order)
+    if not passages:
+        return sorted(_fetch(conn, _SEMANTIC_SQL, params), key=_rank_order)
+    params.update(pool=min(pool, HNSW_EF_SEARCH[1]), hub=settings.hubness_weight)
+    best = max_sim(conn.execute(_PASSAGE_SQL, params).fetchall())
+    scores = dict(list(best.items())[:limit])
+    rows = _fetch(conn, _VERSIONS_SQL, {"ids": list(scores)})
+    return sorted((replace(c, score=scores[c.version_id]) for c in rows), key=_rank_order)
+
+
+def _has_embeddings(conn: psycopg.Connection, table: str, model: str) -> bool:
+    sql = f"SELECT EXISTS (SELECT 1 FROM {table} WHERE embedding_model = %s)"
+    return bool(conn.execute(sql, (model,)).fetchone()[0])
 
 
 def _hybrid(
@@ -269,13 +304,15 @@ def _hybrid(
     at_date: date,
     k: int,
     embedder: Embedder,
-    rrf_k: int,
+    settings: Settings,
 ) -> list[_Candidate]:
-    depth = FUSION_DEPTH * k
+    depth = settings.fusion_depth * k
     lexical = _lexical(conn, query, at_date, depth)
-    semantic = _semantic(conn, query, at_date, depth, embedder)
+    semantic = _semantic(conn, query, at_date, depth, embedder, settings)
     fused = reciprocal_rank_fusion(
-        [[c.version_id for c in lexical], [c.version_id for c in semantic]], k=rrf_k
+        [[c.version_id for c in lexical], [c.version_id for c in semantic]],
+        k=settings.rrf_k,
+        weights=[settings.lexical_weight, 1.0],
     )
     by_id = {c.version_id: c for c in (*lexical, *semantic)}
     ranked = {vid: replace(by_id[vid], score=score) for vid, score in fused.items()}
