@@ -1,0 +1,251 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<akomaNtoso xmlns="http://docs.oasis-open.org/legaldocml/ns/akn/3.0"><act name="monovigente"><meta><identification source="">
+                <FRBRWork>
+                    <FRBRthis value="/akn/it/act/decreto_legislativo/stato/2023-03-31/36/!main"/>
+                    <FRBRuri value="/akn/it/act/decreto_legislativo/stato/2023-03-31/36"/>
+                    <FRBRalias name="urn:nir" value="urn:nir:stato:decreto.legislativo:2023-03-31;36"/>
+                    <FRBRalias name="eli" value="eli/id/2023/03/31/23G00044/CONSOLIDATED/20240302"/>
+                    <FRBRdate date="2023-03-31" name=""/>
+                    <FRBRauthor as="#author" href=""/>
+                    <FRBRcountry value="it"/>
+                </FRBRWork>
+                <FRBRExpression>
+                    <FRBRthis value="/akn/it/act/decreto_legislativo/stato/2023-03-31/36/ita@2024-03-02/!main"/>
+                    <FRBRuri value="/akn/it/act/decreto_legislativo/stato/2023-03-31/36/ita@2024-03-02"/>
+                    <FRBRdate date="2024-03-02" name=""/>
+                    <FRBRauthor as="#author" href=""/>
+                    <FRBRlanguage language="ita"/>
+                </FRBRExpression>
+                <FRBRManifestation>
+                    <FRBRthis value="/akn/it/act/decreto_legislativo/stato/2023-03-31/36/ita@2024-03-02/!main.xml"/>
+                    <FRBRuri value="/akn/it/act/decreto_legislativo/stato/2023-03-31/36/ita@2024-03-02.xml"/>
+                    <FRBRdate date="2023-03-31" name=""/>
+                    <FRBRauthor as="#author" href=""/>
+                    </FRBRManifestation>
+            </identification>
+            <publication date="2023-03-31" name="" number="77" showAs=""/>
+            <lifecycle source="">
+                <eventRef date="2023-03-31" eId="eventRef_0" source="ro1"/>
+                <eventRef date="2023-05-10" eId="eventRef_1" source="rp1"/>
+                <eventRef date="2023-05-29" eId="eventRef_2" source="rp2"/>
+                <eventRef date="2023-07-05" eId="eventRef_3" source="rp3"/>
+                <eventRef date="2023-09-19" eId="eventRef_4" source="rp4"/>
+                <eventRef date="2023-09-29" eId="eventRef_5" source="rp5"/>
+                <eventRef date="2023-11-23" eId="eventRef_6" source="rp6"/>
+                <eventRef date="2023-11-28" eId="eventRef_7" source="rp7"/>
+                <eventRef date="2024-03-02" eId="eventRef_8" source="rp8"/>
+            </lifecycle>
+            <references source="">
+                <original eId="ro1" href="/akn/it/act/DECRETO_LEGISLATIVO/stato/2023-03-31/36/!main" showAs=""/>
+                <passiveRef eId="rp1" href="/akn/it/act/DECRETO-LEGGE/stato/2023-05-10/51/!main" showAs=""/>
+                <passiveRef eId="rp2" href="/akn/it/act/DECRETO-LEGGE/stato/2023-05-29/57/!main" showAs=""/>
+                <passiveRef eId="rp3" href="/akn/it/act/LEGGE/stato/2023-07-03/87/!main" showAs=""/>
+                <passiveRef eId="rp4" href="/akn/it/act/DECRETO-LEGGE/stato/2023-09-19/124/!main" showAs=""/>
+                <passiveRef eId="rp5" href="/akn/it/act/DECRETO-LEGGE/stato/2023-09-29/132/!main" showAs=""/>
+                <passiveRef eId="rp6" href="/akn/it/act/CIRCOLARE/MINISTERO_DELLE_INFRASTRUTTURE_E_DEI_TRASPORTI/2023-11-20/298/!main" showAs=""/>
+                <passiveRef eId="rp7" href="/akn/it/act/LEGGE/stato/2023-11-27/170/!main" showAs=""/>
+                <passiveRef eId="rp8" href="/akn/it/act/DECRETO-LEGGE/stato/2024-03-02/19/!main" showAs=""/>
+            </references>
+            </meta><preface><p>
+                <docType>DECRETO LEGISLATIVO</docType>
+                <docDate date="2023-03-31">31 marzo 2023</docDate>
+                <docNumber>36</docNumber>
+                <docTitle>Codice dei contratti pubblici in attuazione dell'articolo 1 della legge 21 giugno 2022, n. 78, recante delega al Governo in materia di contratti pubblici. (23G00044) 
+</docTitle>
+            </p>
+            </preface><body><chapter><article eId="art_1">
+                    <num>Art. 1.</num>
+                    <heading/>
+                    <paragraph>
+                        <content>
+                            <p> 
+ 
+ Articolo 1. 
+ 
+ Principio del risultato. 
+ 
+ 1. Le stazioni appaltanti e gli enti concedenti perseguono il risultato dell'affidamento del contratto e della sua esecuzione con la massima tempestivita' e il migliore rapporto possibile tra qualita' e prezzo, nel rispetto dei principi di legalita', trasparenza e concorrenza. 
+ 2. La concorrenza tra gli operatori economici e' funzionale a conseguire il miglior risultato possibile nell'affidare ed eseguire i contratti. La trasparenza e' funzionale alla massima semplicita' e celerita' nella corretta applicazione delle regole del presente decreto, di seguito denominato «codice» e ne assicura la piena verificabilita'. 
+ 3. Il principio del risultato costituisce attuazione, nel settore dei contratti pubblici, del principio del buon andamento e dei correlati principi di efficienza, efficacia ed economicita'. Esso e' perseguito nell'interesse della comunita' e per il raggiungimento degli obiettivi dell'Unione europea. 
+ 4. Il principio del risultato costituisce criterio prioritario per l'esercizio del potere discrezionale e per l'individuazione della regola del caso concreto, nonche' per: 
+ a) valutare la responsabilita' del personale che svolge funzioni amministrative o tecniche nelle fasi di programmazione, progettazione, affidamento ed esecuzione dei contratti; 
+ b) attribuire gli incentivi secondo le modalita' previste dalla contrattazione collettiva. 
+</p>
+                        </content>
+                    </paragraph>
+                </article>
+                <article eId="art_6">
+                    <num>Art. 6.</num>
+                    <heading/>
+                    <paragraph>
+                        <content>
+                            <p> Articolo </p>
+                        </content>
+                    </paragraph>
+                    <paragraph eId="art_6__para_6">
+                        <num>6.</num>
+                        <content>
+                            <p>
+ 
+Principi di solidarieta' e di sussidiarieta' orizzontale. Rapporti con gli enti del Terzo settore. 
+ 
+ 1. In attuazione dei principi di solidarieta' sociale e di sussidiarieta' orizzontale, la pubblica amministrazione puo' apprestare, in relazione ad attivita' a spiccata valenza sociale, modelli organizzativi di amministrazione condivisa, privi di rapporti sinallagmatici, fondati sulla condivisione della funzione amministrativa con gli enti del Terzo settore di cui al codice del Terzo settore di cui al <ref eId="content__ref_19" href="/akn/it/act/decretoLegislativo/stato/2017-07-03/117/!main">decreto legislativo 3 luglio 2017, n. 117</ref>, sempre che gli stessi contribuiscano al perseguimento delle finalita' sociali in condizioni di pari trattamento, in modo effettivo e trasparente e in base al principio del risultato. Non rientrano nel campo di applicazione del presente codice gli istituti disciplinati dal Titolo VII del codice del Terzo settore, di cui al <ref eId="content__ref_20" href="/akn/it/act/decretoLegislativo/stato/2017/117/!main">decreto legislativo n. 117 del 2017</ref>. 
+</p>
+                        </content>
+                    </paragraph>
+                </article>
+                <article eId="art_50">
+                    <num>Art. 50.</num>
+                    <heading> Procedure per l'affidamento</heading>
+                    <paragraph>
+                        <content>
+                            <p>
+ 
+ 1. Salvo quanto previsto dagli articoli 62 e 63, le stazioni appaltanti procedono all'affidamento dei contratti di lavori, servizi e forniture di importo inferiore alle soglie di cui all'articolo 14 con le seguenti modalita': 
+ a) affidamento diretto per lavori di importo inferiore a 150.000 euro, anche senza consultazione di piu' operatori economici, assicurando che siano scelti soggetti in possesso di documentate esperienze pregresse idonee all'esecuzione delle prestazioni contrattuali anche individuati tra gli iscritti in elenchi o albi istituiti dalla stazione appaltante; 
+ b) affidamento diretto dei servizi e forniture, ivi compresi i servizi di ingegneria e architettura e l'attivita' di progettazione, di importo inferiore a 140.000 euro, anche senza consultazione di piu' operatori economici, assicurando che siano scelti soggetti in possesso di documentate esperienze pregresse idonee all'esecuzione delle prestazioni contrattuali, anche individuati tra gli iscritti in elenchi o albi istituiti dalla stazione appaltante; 
+ c) procedura negoziata senza bando, previa consultazione di almeno cinque operatori economici, ove esistenti, individuati in base a indagini di mercato o tramite elenchi di operatori economici, per i lavori di importo pari o superiore a 150.000 euro e inferiore a 1 milione di euro; 
+ d) procedura negoziata senza bando, previa consultazione di almeno dieci operatori economici, ove esistenti, individuati in base a indagini di mercato o tramite elenchi di operatori economici, per lavori di importo pari o superiore a 1 milione di euro e fino alle soglie di cui all'articolo 14, salva la possibilita' di ricorrere alle procedure di scelta del contraente di cui alla Parte IV del presente Libro; 
+ e) procedura negoziata senza bando, previa consultazione di almeno cinque operatori economici, ove esistenti, individuati in base ad indagini di mercato o tramite elenchi di operatori economici, per l'affidamento di servizi e forniture, ivi compresi i servizi di ingegneria e architettura e l'attivita' di progettazione, di importo pari o superiore a 140.000 euro e fino alle soglie di cui all'articolo 14. 
+ 2. Gli elenchi e le indagini di mercato sono gestiti con le modalita' previste nell'allegato II.1. Per la selezione degli operatori da invitare alle procedure negoziate, le stazioni appaltanti non possono utilizzare il sorteggio o altro metodo di estrazione casuale dei nominativi, se non in presenza di situazioni particolari e specificamente motivate, nei casi in cui non risulti praticabile nessun altro metodo di selezione degli operatori. Le stazioni appaltanti pubblicano sul proprio sito istituzionale i nominativi degli operatori consultati nell'ambito delle procedure di cui al comma 1. 
+ 3. In sede di prima applicazione del codice, l'allegato II.1 e' abrogato a decorrere dalla data di entrata in vigore di un corrispondente regolamento adottato ai sensi dell'<ref eId="content__ref_118" href="/akn/it/act/legge/stato/1988-08-23/400/!main#art_17-com3">articolo 17, comma 3, della legge 23 agosto 1988, n. 400</ref>, con decreto del Ministro delle infrastrutture e dei trasporti, previo parere dell'ANAC, che lo sostituisce integralmente anche in qualita' di allegato al codice. 
+ 4. Per gli affidamenti di cui al comma 1, lettere c), d) ed e), le stazioni appaltanti procedono all'aggiudicazione dei relativi appalti sulla base del criterio dell'offerta economicamente piu' vantaggiosa oppure del prezzo piu' basso ad eccezione delle ipotesi di cui all'articolo 108, comma 2. 
+ 5. Le imprese pubbliche, per i contratti di lavori, forniture e servizi di importo inferiore alle soglie europee di cui all'articolo 14, rientranti nell'ambito definito dagli articoli da 146 a 152, applicano la disciplina stabilita nei rispettivi regolamenti, la quale, se i contratti presentano un interesse transfrontaliero certo, deve essere conforme ai principi del Trattato sull'Unione europea a tutela della concorrenza. Gli altri soggetti di cui all'articolo 141, comma 1, secondo periodo, applicano la disciplina stabilita nei rispettivi regolamenti, la quale deve essere conforme ai predetti principi del Trattato sull'Unione europea. 
+ 6. Dopo la verifica dei requisiti dell'aggiudicatario la stazione appaltante puo' procedere all'esecuzione anticipata del contratto; nel caso di mancata stipulazione l'aggiudicatario ha diritto al rimborso delle spese sostenute per l'esecuzione dei lavori ordinati dal direttore dei lavori e, nel caso di servizi e forniture, per le prestazioni eseguite su ordine del direttore dell'esecuzione. 
+ 7. Per i contratti di cui alla presente Parte la stazione appaltante puo' sostituire il certificato di collaudo o il certificato di verifica di conformita' con il certificato di regolare esecuzione, rilasciato per i lavori dal direttore dei lavori e per le forniture e i servizi dal RUP o dal direttore dell'esecuzione, se nominato. Il certificato di regolare esecuzione e' emesso non oltre tre mesi dalla data di ultimazione delle prestazioni oggetto del contratto. 
+ 8. I bandi e gli avvisi di pre-informazione relativi ai contratti di cui alla presente Parte sono pubblicati a livello nazionale con le modalita' di cui all'articolo 85, con esclusione della trasmissione del bando di gara all'Ufficio delle pubblicazioni dell'Unione europea. 
+ 9. Con le stesse modalita' di cui al comma 8 e' pubblicato l'avviso sui risultati delle procedure di affidamento di cui al presente articolo. Nei casi di cui alle lettere c), d) ed e) del comma 1, tale avviso contiene anche l'indicazione dei soggetti invitati. 
+</p>
+                        </content>
+                    </paragraph>
+                </article>
+                <article eId="art_109">
+                    <num>Art. 109.</num>
+                    <heading> Reputazione dell'impresa</heading>
+                    <paragraph>
+                        <content>
+                            <p>
+ 
+ 1. E' istituito presso l'ANAC, che ne cura la gestione, un sistema digitale di monitoraggio delle prestazioni, quale elemento del fascicolo virtuale degli operatori. Il sistema e' fondato su requisiti reputazionali valutati sulla base di indici qualitativi e quantitativi, oggettivi e misurabili, nonche' sulla base di accertamenti definitivi, che esprimono l'affidabilita' dell'impresa in fase esecutiva, il rispetto della legalita' e degli obiettivi di sostenibilita' e responsabilita' sociale. 
+ 2. L'ANAC definisce gli elementi del monitoraggio, le modalita' di raccolta dei dati e il meccanismo di applicazione del sistema per incentivare gli operatori al rispetto dei principi del risultato di cui all'articolo 1 e di buona fede e affidamento di cui all'articolo 5, bilanciando questi elementi con il mantenimento dell'apertura del mercato, specie con riferimento alla partecipazione di nuovi operatori. 
+ 3. Alla presente disposizione e' data attuazione entro diciotto mesi dalla data di entrata in vigore del codice, anche tenendo conto dei risultati ottenuti nel periodo iniziale di sperimentazione. 
+</p>
+                        </content>
+                    </paragraph>
+                </article>
+                </chapter></body><attachments><attachment><doc name="Allegato I.3"><mainBody>
+                        <paragraph>
+                            <content>
+                                <p> Allegato I.3 
+ 
+ Termini delle procedure di appalto e di concessione 
+ 
+ (Articolo 17, comma 3) 
+ 
+1. A norma dell'articolo 17, comma 3, del codice le gare di appalto e di concessione si concludono nei seguenti termini massimi, ove sia utilizzato il criterio dell'offerta economicamente piu' vantaggiosa basato sul miglior rapporto tra qualita' e prezzo o sul costo del ciclo di vita: 
+a) procedura aperta: nove mesi; 
+b) procedura ristretta: dieci mesi; 
+c) procedura competitiva con negoziazione: sette mesi; 
+d) procedura negoziata senza previa pubblicazione di un bando di gara: quattro mesi; 
+e) dialogo competitivo: sette mesi; 
+f) partenariato per l'innovazione: nove mesi. 
+2. I termini per la conclusione delle gare condotte secondo il criterio del minor prezzo sono i seguenti: 
+a) procedura aperta: cinque mesi; 
+b) procedura ristretta: sei mesi; 
+c) procedura competitiva con negoziazione: quattro mesi; 
+d) procedura negoziata senza previa pubblicazione di un bando di gara: tre mesi. 
+3. I termini decorrono dalla pubblicazione del bando di gara o dall'invio degli inviti a offrire, fino all'aggiudicazione alla miglior offerta, e non possono essere sospesi neanche in pendenza di contenzioso sulla procedura se non a seguito di provvedimento cautelare del giudice amministrativo. 
+4. Ove la stazione appaltante o l'ente concedente debba effettuare la procedura di verifica dell'anomalia, i termini sopraindicati sono prorogati per il periodo massimo di un mese. 
+5. In presenza di circostanze eccezionali il RUP, con proprio atto motivato, puo' prorogare i termini suddetti per un massimo di tre mesi. In presenza di ulteriori situazioni imprevedibili di oggettiva difficolta' che rendono non sostenibili i tempi procedimentali sotto il profilo dell'organizzazione amministrativa e della particolare complessita' della procedura, certificate dal RUP, quest'ultimo, con proprio atto motivato, puo' prorogare i termini suddetti per ulteriori tre mesi. 
+</p>
+                            </content>
+                        </paragraph>
+                    </mainBody>
+                </doc></attachment><attachment><doc name="Allegato I.4-art 1"><mainBody>
+                        <paragraph>
+                            <content>
+                                <p> Allegato I.4 
+ 
+ Imposta di bollo relativa alla stipulazione del contratto 
+ 
+ (Articolo 18, comma 10) 
+ 
+ Articolo 1 
+ 
+1. Il valore dell'imposta di bollo, che l'appaltatore e' tenuto a versare al momento della stipula del contratto, e' determinato sulla base della Tabella A annessa al presente allegato. 
+2. L'imposta e' determinata sulla base di scaglioni crescenti in relazione all'importo massimo previsto nel contratto, ivi comprese eventuali opzioni o rinnovi esplicitamente stabiliti. Sono esenti dall'imposta gli affidamenti di importo inferiore a 40.000 euro. 
+</p>
+                            </content>
+                        </paragraph>
+                    </mainBody>
+                </doc></attachment><attachment><doc name="Allegato I.4-Tabella A"><mainBody>
+                        <paragraph>
+                            <content>
+                                <p> Tabella A 
+ 
+ Valori dell'imposta di bollo 
+ 
+ </p>
+                                <table>
+                                    <tr>
+                                        <th>
+                                            <p> Fascia di importo contratto (valori in euro) </p>
+                                        </th>
+                                        <th>
+                                            <p>Imposta (valori in euro) </p>
+                                        </th>
+                                    </tr>
+                                    <tr>
+                                        <td>
+                                            <p>&lt; 40.000 </p>
+                                        </td>
+                                        <td>
+                                            <p>esente </p>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>
+                                            <p>≥ 40.000 &lt; 150.000 </p>
+                                        </td>
+                                        <td>
+                                            <p>40 </p>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>
+                                            <p>≥ 150.000 &lt; 1000000 </p>
+                                        </td>
+                                        <td>
+                                            <p>120 </p>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>
+                                            <p>≥ 1.000.000 &lt; 5.000.000 </p>
+                                        </td>
+                                        <td>
+                                            <p>250 </p>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>
+                                            <p>≥ 5.000.000 &lt; 25.000.000 </p>
+                                        </td>
+                                        <td>
+                                            <p>500 </p>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>
+                                            <p>≥ 25.000.000 </p>
+                                        </td>
+                                        <td>
+                                            <p>1.000 </p>
+                                        </td>
+                                    </tr>
+                                </table>
+                                <p/>
+                            </content>
+                        </paragraph>
+                    </mainBody>
+                </doc></attachment></attachments></act></akomaNtoso>
