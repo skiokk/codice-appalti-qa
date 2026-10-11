@@ -271,3 +271,26 @@ among alternatives on it, but a confirmation on new questions is still needed.
 
 Results: `eval/results/rerank/` (`20261011T203936Z` and `20261011T204123Z` for run 1 on dev and
 test, `20261011T204301Z` and `20261011T204453Z` for run 2).
+
+## 10. Acronyms are searched with the code's wording
+
+**Context.** Users write the acronyms of practice, but the code spells most of them out. "DEC"
+never occurs in it (the text says "direttore dell'esecuzione del contratto"), nor do DGUE, FVOE,
+OEPV, CCNL or RTI. "Voglio sapere i compiti di un DEC e i requisiti per essere DEC" therefore
+retrieved allegato II.6 fragments and tables; the reranker found none of the 40 candidates
+useful, and the model rightly abstained. Only three acronyms occur in the dataset questions
+(RUP, which the code uses, CCNL and CAM), so the evaluation could not show the gap.
+
+**Decision.** A fixed glossary of 21 acronyms (`retrieval/acronyms.py`), each mapped to the
+code's own wording, which search appends after the first occurrence of the acronym (lexical and
+semantic search, hybrid search and the reranking pool). Matching is case-sensitive on whole
+words, and an acronym whose expansion is already in the question is left alone. The model still
+reads the question as written. Ambiguous acronyms are left out ("DL" is both *decreto-legge* and
+*direttore dei lavori*).
+
+**Result.** On the 73 questions only Q005 (CCNL) changes: hybrid MRR 0 → 0.25 and recall@5
+0 → 1, so hybrid recall@5 goes from 0.836 to 0.849 and MRR from 0.786 to 0.789. The published
+runs above predate the glossary. For the DEC question the reranked sources are now allegato II.14
+art. 31, art. 114 commi 1, 7 and 8 and allegato I.2 art. 8, and the answer cites them. Questions
+written with acronyms belong in the next set of evaluation questions.
+

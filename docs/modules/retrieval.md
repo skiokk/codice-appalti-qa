@@ -44,6 +44,10 @@ validity is that of the text, across such rows; `history` folds them into the te
   (default 1, plain RRF). Units explicitly cited in the question ("art. 50, comma 1, lett. b)")
   are pinned first.
 
+Before searching, known acronyms of procurement practice are followed by the code's wording
+("DEC" → "DEC (direttore dell'esecuzione del contratto)", decision 10): the code rarely uses
+them, so a question with only the acronym would miss the units on that subject.
+
 `candidate_pool(query, date, size)` serves the reranked answers (decision 9): three lists of
 `size` units (lexical, semantic on whole units, semantic on passages without hubness correction)
 fused by plain RRF, with cited units pinned first (score at least `PINNED_SCORE`). It embeds the

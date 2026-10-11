@@ -28,7 +28,8 @@ sources do not answer the question. It also publishes how often it gets things r
 - **Hybrid retrieval in PostgreSQL.** Italian full-text search (`tsvector`) and local
   multilingual embeddings (`intfloat/multilingual-e5-base` on CPU, pgvector HNSW), fused with
   reciprocal rank fusion and filtered by date. Explicit references such as "art. 50, comma 1,
-  lett. b)" are recognised and pinned first. Long commi and tables are also embedded as
+  lett. b)" are recognised and pinned first, and acronyms the code spells out ("DEC", "DGUE",
+  "OEPV") are searched with its wording. Long commi and tables are also embedded as
   sub-passages (one per lettera, or overlapping windows); passage-level search is measured and
   available, but not the default, because it did not beat the baseline on held-out questions.
 - **Reranking.** For answers, 40 candidates from lexical, unit-level and passage-level search are

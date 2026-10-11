@@ -27,6 +27,7 @@ from appalti_qa.config import RetrievalMode, Settings, get_settings
 from appalti_qa.db import get_pool
 from appalti_qa.keys import is_valid_key
 from appalti_qa.models import Event, HeadingChange, Hit, UnitVersion
+from appalti_qa.retrieval.acronyms import expand_acronyms
 from appalti_qa.retrieval.embedding import Embedder, get_embedder
 from appalti_qa.retrieval.fusion import reciprocal_rank_fusion
 from appalti_qa.retrieval.passages import max_sim
@@ -146,7 +147,8 @@ def search(
     (with `semantic_granularity = "passage"`, of the version's best passage, less
     `hubness_weight` times its hub score), hybrid = reciprocal rank fusion with the lexical list
     weighted by `lexical_weight`, with units cited in the query ("art. 50, comma 1") first.
-    Semantic search uses only embeddings made by the embedder's model.
+    Semantic search uses only embeddings made by the embedder's model. Known acronyms ("DEC")
+    are searched together with the code's wording (`expand_acronyms`).
     """
     if mode not in get_args(RetrievalMode):
         raise ValueError(f"unknown retrieval mode: {mode!r}")
@@ -155,6 +157,7 @@ def search(
     query = query.strip()
     if not query:
         return []
+    query = expand_acronyms(query)
     settings = settings or get_settings()
     with _session(conn) as c:
         if mode == "lexical":
@@ -186,6 +189,7 @@ def candidate_pool(
     query = query.strip()
     if not query:
         return []
+    query = expand_acronyms(query)
     settings = settings or get_settings()
     embedder = embedder or get_embedder(settings)
     units = settings.model_copy(update={"semantic_granularity": "unit"})
