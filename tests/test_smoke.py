@@ -7,6 +7,7 @@ from appalti_qa.cli import build_parser
 from appalti_qa.config import Settings
 from appalti_qa.db import schema_sql
 from appalti_qa.keys import (
+    annex_from_doc_name,
     article_from_num,
     comma_from_num,
     key_label,
@@ -139,3 +140,34 @@ def test_seed_corpus_point_in_time(seeded_conn: psycopg.Connection) -> None:
         ("affidamento diretto servizi",),
     ).fetchone()[0]
     assert hits == 2
+
+
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    [
+        ("Allegato I.1-art. 2", "I.1"),
+        ("Allegati - Allegato I.01 art. 1", "I.01"),
+        ("Allegato I.3", "I.3"),
+        ("Allegato II.2-Allegato II.2 bis art. 1", "II.2-bis"),
+        ("Allegati - Indice allegati", None),
+    ],
+)
+def test_annex_from_doc_name(name: str, expected: str | None) -> None:
+    assert annex_from_doc_name(name) == expected
+
+
+def test_cli_passes_leading_options_to_eval(monkeypatch: pytest.MonkeyPatch) -> None:
+    import appalti_qa.cli as cli
+
+    seen: list[list[str]] = []
+    monkeypatch.setattr(cli, "_resolve", lambda *_: lambda argv: seen.append(argv) or 0)
+    assert cli.main(["eval", "-h"]) == 0
+    assert cli.main(["eval", "retrieval", "--mode", "lexical"]) == 0
+    assert seen == [["-h"], ["retrieval", "--mode", "lexical"]]
+
+
+def test_cli_rejects_unknown_options() -> None:
+    from appalti_qa.cli import main
+
+    with pytest.raises(SystemExit):
+        main(["init-db", "--bogus"])

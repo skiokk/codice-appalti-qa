@@ -87,8 +87,12 @@ def lettera_from_num(num: str) -> str:
 
 
 def annex_from_doc_name(name: str) -> str | None:
-    """'Allegato I.1-art. 2' -> 'I.1'; returns None for docs that are not an allegato."""
-    match = _ANNEX_NAME_RE.search(name)
+    """'Allegato I.1-art. 2' -> 'I.1'; returns None for docs that are not an allegato.
+
+    The last allegato named wins: 'Allegato II.2-Allegato II.2 bis art. 1' -> 'II.2-bis'.
+    """
+    matches = list(_ANNEX_NAME_RE.finditer(name))
+    match = matches[-1] if matches else None
     return _join(match["code"], match["suffix"]) if match else None
 
 

@@ -88,7 +88,13 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+    parser = build_parser()
+    # parse_known_args so that `eval -h` and other leading eval options reach the eval tool.
+    args, extra = parser.parse_known_args(argv)
+    if args.command == "eval":
+        args.eval_args = [*extra, *args.eval_args]
+    elif extra:
+        parser.error(f"unrecognized arguments: {' '.join(extra)}")
     logging.basicConfig(
         level=get_settings().log_level.upper(),
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",

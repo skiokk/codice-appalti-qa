@@ -13,6 +13,8 @@ RUN pip install torch --index-url https://download.pytorch.org/whl/cpu
 COPY pyproject.toml README.md LICENSE ./
 COPY src ./src
 COPY sql ./sql
+# Dataset and published results (the /valutazione page reads eval/results/latest.json).
+COPY eval ./eval
 RUN pip install .
 
 RUN useradd --create-home --uid 1000 app \
@@ -21,4 +23,4 @@ RUN useradd --create-home --uid 1000 app \
 USER app
 
 EXPOSE 8000
-CMD ["uvicorn", "appalti_qa.web:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "appalti_qa.web:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000", "--no-proxy-headers"]

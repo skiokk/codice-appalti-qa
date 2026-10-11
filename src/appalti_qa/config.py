@@ -35,7 +35,7 @@ class Settings(BaseSettings):
     llm_provider: ProviderName = "fake"
     llm_model: str = "claude-opus-5-5"
     llm_effort: Effort = "medium"
-    llm_max_tokens: int = Field(default=2048, gt=0)
+    llm_max_tokens: int = Field(default=16000, gt=0)  # a ceiling; reasoning tokens count too
     llm_timeout_s: float = Field(default=60.0, gt=0)
     groq_model: str = "openai/gpt-oss-120b"
     anthropic_api_key: SecretStr | None = None
@@ -58,6 +58,9 @@ class Settings(BaseSettings):
     client_hash_salt: SecretStr | None = (
         None  # salt for hashing client IPs; random per process if unset
     )
+
+    # Comma-separated IPs/CIDRs of trusted reverse proxies; empty = ignore X-Forwarded-For
+    forwarded_allow_ips: str = ""
 
     log_level: str = "INFO"
 
