@@ -212,3 +212,37 @@ What the numbers say:
 
 Results: `eval/results/sweeps/20261011T182205Z_sweep_dev`, `20261011T182509Z_sweep_test` and
 `20261011T182915Z_sweep_all` (`.json`, `.md`).
+
+## 9. A small model reorders a wider pool of candidates (fixed before measuring)
+
+**Context.** Decision 8 left two facts: the expected comma is often retrieved but not in the top
+5 (recall@10 0.886, MRR 0.786), and passage-level search finds units that unit-level search
+misses (50/1 for the direct-award question), while hurting the order of the others. Neither
+list alone gives the answer model the right commi first. A language model that reads the
+candidates can judge relevance in a way that rank fusion of similarity scores cannot.
+
+**Decision.** One configuration, fixed here before any number is looked at; nothing is tuned.
+
+1. *Candidates.* For the question at its date, three ranked lists of 40 units each: lexical (as
+   in hybrid search), semantic on whole units, and semantic on passages (max-sim, no hubness
+   correction). They are fused with reciprocal rank fusion (k = 60, equal weights) and the 40
+   best are the candidates. Units cited in the question ("art. 50, comma 1") are pinned first,
+   as in hybrid search.
+2. *Reranker.* Claude Haiku 5.5 (`claude-haiku-5-5`, default effort) reads the question, the
+   date and every candidate (label, heading and text, cut at 3,000 characters) and returns, as
+   structured output, the candidates useful to answer, most useful first, at most 15.
+3. *Ranking.* Pinned units, then the reranker's list, then the other candidates in fused order.
+   When the call fails or is declined, the fused order is used and the failure is counted.
+4. *Scope.* Only answers are reranked. `GET /api/v1/search` keeps plain hybrid search: it has no
+   daily limit and must not spend on model calls.
+5. *Measure.* Comma-level retrieval metrics on the development set, the test set and all
+   questions, from two independent runs (the model is not deterministic).
+6. *Adoption rule.* Reranking becomes the default for answers only if, in both runs, on the test
+   set, its MRR is higher than the baseline's (`hybrid unit w1 d4`) and its recall@5 is not
+   lower. Otherwise it stays off and the result is reported as negative.
+
+**Caveat.** The test set is no longer untouched: decision 8 evaluated 60 variants on it, and the
+idea of adding the passage list comes from those results. This configuration was not selected
+among alternatives on it, but a confirmation on new questions is still needed.
+
+**Result.** Pending.
