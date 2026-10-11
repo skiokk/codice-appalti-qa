@@ -1,0 +1,974 @@
+# Evaluation question set for the Codice dei contratti pubblici (D.Lgs. 36/2023).
+# See eval/README_dataset.md for the field reference and the review workflow.
+
+- id: Q001
+  question: "Cosa significa in pratica il principio del risultato per una stazione appaltante?"
+  kind: answerable
+  category: principi
+  vigenza: "2026-10-11"
+  expected_answer: "Le stazioni appaltanti e gli enti concedenti devono perseguire il risultato dell'affidamento e dell'esecuzione del contratto con la massima tempestività e il miglior rapporto possibile tra qualità e prezzo, sempre nel rispetto dei principi di legalità, trasparenza e concorrenza."
+  expected_refs: ["1/1"]
+  source_excerpt: "Le stazioni appaltanti e gli enti concedenti perseguono il risultato dell'affidamento del contratto e della sua esecuzione con la massima tempestivita' e il migliore rapporto possibile tra qualita' e prezzo, nel rispetto dei principi di legalita', trasparenza e concorrenza."
+  difficulty: easy
+  status: bozza
+  notes: ""
+
+- id: Q002
+  question: "Ai fini della responsabilità amministrativa del funzionario che gestisce una gara, quando c'è colpa grave e quando invece no?"
+  kind: answerable
+  category: principi
+  vigenza: "2026-10-11"
+  expected_answer: "Costituisce colpa grave la violazione di norme di diritto e degli auto-vincoli amministrativi, la palese violazione di regole di prudenza, perizia e diligenza e l'omissione delle cautele e verifiche normalmente richieste. Non costituisce colpa grave la violazione o l'omissione dovuta all'aver seguito indirizzi giurisprudenziali prevalenti o pareri delle autorità competenti."
+  expected_refs: ["2/3"]
+  source_excerpt: "Non costituisce colpa grave la violazione o l'omissione determinata dal riferimento a indirizzi giurisprudenziali prevalenti o a pareri delle autorita' competenti."
+  difficulty: hard
+  status: bozza
+  notes: ""
+
+- id: Q003
+  question: "Quali principi deve rispettare la stazione appaltante per favorire l'accesso al mercato degli operatori economici?"
+  kind: answerable
+  category: principi
+  vigenza: "2026-10-11"
+  expected_answer: "L'accesso al mercato va favorito nel rispetto dei principi di concorrenza, imparzialità, non discriminazione, pubblicità e trasparenza e proporzionalità, secondo le modalità indicate dal codice."
+  expected_refs: ["3/1"]
+  source_excerpt: "favoriscono, secondo le modalita' indicate dal codice, l'accesso al mercato degli operatori economici nel rispetto dei principi di concorrenza, di imparzialita', di non discriminazione, di pubblicita' e trasparenza, di proporzionalita'."
+  difficulty: easy
+  status: bozza
+  notes: ""
+
+- id: Q004
+  question: "Se durante l'esecuzione un evento straordinario e imprevedibile stravolge l'equilibrio del contratto, l'appaltatore può chiedere di rinegoziare? Con quali risorse si pagano gli oneri?"
+  kind: answerable
+  category: esecuzione
+  vigenza: "2026-10-11"
+  expected_answer: "Sì: se circostanze straordinarie e imprevedibili, estranee alla normale alea, alterano in modo rilevante l'equilibrio originario, la parte svantaggiata che non ha assunto volontariamente il rischio ha diritto alla rinegoziazione secondo buona fede. Gli oneri sono riconosciuti all'esecutore sulle somme a disposizione del quadro economico (imprevisti e accantonamenti) e, se necessario, sulle economie da ribasso d'asta."
+  expected_refs: ["9/1"]
+  source_excerpt: "Gli oneri per la rinegoziazione sono riconosciuti all'esecutore a valere sulle somme a disposizione indicate nel quadro economico dell'intervento, alle voci imprevisti e accantonamenti e, se necessario, anche utilizzando le economie da ribasso d'asta."
+  difficulty: medium
+  status: bozza
+  notes: ""
+
+- id: Q005
+  question: "Partecipo a una gara di servizi ma applico ai miei dipendenti un CCNL diverso da quello indicato nel bando: posso farlo?"
+  kind: answerable
+  category: principi
+  vigenza: "2026-10-11"
+  expected_answer: "Sì, l'operatore economico può indicare nell'offerta un contratto collettivo diverso da quello indicato dalla stazione appaltante, purché garantisca ai dipendenti le stesse tutele."
+  expected_refs: ["11/3"]
+  source_excerpt: "gli operatori economici possono indicare nella propria offerta il differente contratto collettivo da essi applicato, purche' garantisca ai dipendenti le stesse tutele di quello indicato dalla stazione appaltante o dall'ente concedente."
+  difficulty: medium
+  status: bozza
+  notes: "Comma 4 adds the declaration of equivalence verified under art. 110."
+
+- id: Q006
+  question: "Qual è la soglia di rilevanza europea per gli appalti pubblici di lavori indicata nel codice?"
+  kind: answerable
+  category: soglie
+  vigenza: "2026-10-11"
+  expected_answer: "Il codice indica una soglia di 5.382.000 euro per gli appalti pubblici di lavori e per le concessioni; le soglie sono periodicamente rideterminate dalla Commissione europea."
+  expected_refs: ["14/1/a"]
+  source_excerpt: "a) euro 5.382.000 per gli appalti pubblici di lavori e per le concessioni;"
+  difficulty: easy
+  status: bozza
+  notes: "The consolidated text still shows the original figure; art. 14, comma 3 says thresholds are updated by Commission regulation, so the figure applied in practice can differ."
+
+- id: Q007
+  question: "Nel calcolare il valore stimato di un appalto devo considerare anche le opzioni e i rinnovi? Con o senza IVA?"
+  kind: answerable
+  category: soglie
+  vigenza: "2026-10-11"
+  expected_answer: "Il valore stimato si basa sull'importo totale pagabile al netto dell'IVA e tiene conto dell'importo massimo stimato, comprese eventuali opzioni o rinnovi esplicitamente previsti nei documenti di gara, nonché di eventuali premi o pagamenti ai candidati."
+  expected_refs: ["14/4"]
+  source_excerpt: "Il calcolo tiene conto dell'importo massimo stimato, ivi compresa qualsiasi forma di eventuali opzioni o rinnovi del contratto esplicitamente stabiliti nei documenti di gara."
+  difficulty: easy
+  status: bozza
+  notes: ""
+
+- id: Q008
+  question: "In quale momento va nominato il RUP e per quali fasi?"
+  kind: answerable
+  category: rup
+  vigenza: "2026-10-11"
+  expected_answer: "Il RUP è nominato nel primo atto di avvio dell'intervento pubblico e copre le fasi di programmazione, progettazione, affidamento ed esecuzione di ciascuna procedura soggetta al codice."
+  expected_refs: ["15/1"]
+  source_excerpt: "Nel primo atto di avvio dell'intervento pubblico da realizzare mediante un contratto le stazioni appaltanti e gli enti concedenti nominano nell'interesse proprio o di altre amministrazioni un responsabile unico del progetto (RUP)"
+  difficulty: easy
+  status: bozza
+  notes: ""
+
+- id: Q009
+  question: "Posso affidare incarichi di assistenza al RUP? C'è un limite di spesa?"
+  kind: answerable
+  category: rup
+  vigenza: "2026-10-11"
+  expected_answer: "Sì, la stazione appaltante può istituire una struttura di supporto al RUP e destinare risorse non superiori all'1 per cento dell'importo a base di gara per l'affidamento diretto, da parte del RUP, di incarichi di assistenza."
+  expected_refs: ["15/6"]
+  source_excerpt: "possono destinare risorse finanziarie non superiori all'1 per cento dell'importo posto a base di gara per l'affidamento diretto da parte del RUP di incarichi di assistenza al medesimo."
+  difficulty: medium
+  status: bozza
+  notes: ""
+
+- id: Q010
+  question: "Cosa deve contenere l'atto con cui disponiamo un affidamento diretto?"
+  kind: answerable
+  category: affidamento_diretto
+  vigenza: "2026-10-11"
+  expected_answer: "In caso di affidamento diretto, la decisione di contrarre individua l'oggetto, l'importo e il contraente, con le ragioni della scelta, i requisiti di carattere generale e, se necessari, quelli di capacità economico-finanziaria e tecnico-professionale."
+  expected_refs: ["17/2"]
+  source_excerpt: "In caso di affidamento diretto, l'atto di cui al comma 1 individua l'oggetto, l'importo e il contraente, unitamente alle ragioni della sua scelta, ai requisiti di carattere generale e, se necessari, a quelli inerenti alla capacita' economico-finanziaria e tecnico-professionale."
+  difficulty: medium
+  status: bozza
+  notes: ""
+
+- id: Q011
+  question: "Chi è titolare della Banca dati nazionale dei contratti pubblici?"
+  kind: answerable
+  category: digitalizzazione
+  vigenza: "2026-10-11"
+  expected_answer: "La titolarità esclusiva della Banca dati nazionale dei contratti pubblici spetta all'ANAC, che ne sviluppa e gestisce i servizi."
+  expected_refs: ["23/1"]
+  source_excerpt: "L'ANAC e' titolare in via esclusiva della Banca dati nazionale dei contratti pubblici"
+  difficulty: easy
+  status: bozza
+  notes: ""
+
+- id: Q012
+  question: "A cosa serve il fascicolo virtuale dell'operatore economico e dove si trova?"
+  kind: answerable
+  category: digitalizzazione
+  vigenza: "2026-10-11"
+  expected_answer: "Il fascicolo virtuale opera presso la Banca dati nazionale dei contratti pubblici e consente di verificare l'assenza delle cause di esclusione degli articoli 94 e 95, i requisiti dell'articolo 103 per gli esecutori di lavori e i dati e documenti sui requisiti dell'articolo 100 inseriti dall'operatore."
+  expected_refs: ["24/1"]
+  source_excerpt: "Presso la Banca dati nazionale dei contratti pubblici opera il fascicolo virtuale dell'operatore economico che consente la verifica dell'assenza delle cause di esclusione di cui agli articoli 94 e 95"
+  difficulty: medium
+  status: bozza
+  notes: ""
+
+- id: Q013
+  question: "Se la piattaforma telematica va in errore poco prima della scadenza delle offerte, cosa deve fare la stazione appaltante?"
+  kind: answerable
+  category: digitalizzazione
+  vigenza: "2026-10-11"
+  expected_answer: "La stazione appaltante deve assicurare comunque la partecipazione alla gara anche in caso di malfunzionamento comprovato, pur se temporaneo, eventualmente sospendendo il termine per la ricezione delle offerte per il tempo necessario al ripristino e prorogandolo in proporzione alla gravità del malfunzionamento."
+  expected_refs: ["25/2"]
+  source_excerpt: "Le stazioni appaltanti e gli enti concedenti assicurano la partecipazione alla gara anche in caso di comprovato malfunzionamento, pur se temporaneo, delle piattaforme"
+  difficulty: medium
+  status: bozza
+  notes: ""
+
+- id: Q014
+  question: "In una procedura aperta, un concorrente può sapere chi ha presentato offerta prima della scadenza del termine?"
+  kind: answerable
+  category: digitalizzazione
+  vigenza: "2026-10-11"
+  expected_answer: "No: nelle procedure aperte l'accesso all'elenco dei soggetti che hanno presentato offerte è differito fino alla scadenza del termine per la presentazione delle offerte."
+  expected_refs: ["35/2/a"]
+  source_excerpt: "a) nelle procedure aperte, in relazione all'elenco dei soggetti che hanno presentato offerte, fino alla scadenza del termine per la presentazione delle medesime;"
+  difficulty: medium
+  status: bozza
+  notes: ""
+
+- id: Q015
+  question: "Quali acquisti di beni e servizi devono essere inseriti nel programma triennale?"
+  kind: answerable
+  category: programmazione
+  vigenza: "2026-10-11"
+  expected_answer: "Il programma triennale degli acquisti di beni e servizi e i suoi aggiornamenti annuali indicano gli acquisti di importo stimato pari o superiore alla soglia dell'affidamento diretto di servizi e forniture prevista dall'articolo 50, comma 1, lettera b)."
+  expected_refs: ["37/3"]
+  source_excerpt: "Il programma triennale di acquisti di beni e servizi e i relativi aggiornamenti annuali indicano gli acquisti di importo stimato pari o superiore alla soglia di cui all'articolo 50, comma 1, lettera b)."
+  difficulty: medium
+  status: bozza
+  notes: "Art. 50, comma 1, lett. b) sets that threshold at 140.000 euro."
+
+- id: Q016
+  question: "In quanti livelli si articola la progettazione dei lavori pubblici con il nuovo codice?"
+  kind: answerable
+  category: progettazione
+  vigenza: "2026-10-11"
+  expected_answer: "La progettazione dei lavori pubblici si articola in due livelli: il progetto di fattibilità tecnico-economica e il progetto esecutivo."
+  expected_refs: ["41/1"]
+  source_excerpt: "La progettazione in materia di lavori pubblici, si articola in due livelli di successivi approfondimenti tecnici: il progetto di fattibilita' tecnico-economica e il progetto esecutivo."
+  difficulty: easy
+  status: bozza
+  notes: ""
+
+- id: Q017
+  question: "I costi della manodopera indicati negli atti di gara sono soggetti a ribasso?"
+  kind: answerable
+  category: progettazione
+  vigenza: "2026-10-11"
+  expected_answer: "No: i costi della manodopera e della sicurezza sono scorporati dall'importo assoggettato al ribasso, ferma la possibilità per l'operatore di dimostrare che il ribasso complessivo deriva da una più efficiente organizzazione aziendale."
+  expected_refs: ["41/14"]
+  source_excerpt: "I costi della manodopera e della sicurezza sono scorporati dall'importo assoggettato al ribasso. Resta ferma la possibilita' per l'operatore economico di dimostrare che il ribasso complessivo dell'importo deriva da una piu' efficiente organizzazione aziendale."
+  difficulty: medium
+  status: bozza
+  notes: ""
+
+- id: Q018
+  question: "Quanto può destinare al massimo l'amministrazione agli incentivi per le funzioni tecniche del proprio personale?"
+  kind: answerable
+  category: incentivi
+  vigenza: "2026-10-11"
+  expected_answer: "Le risorse per le funzioni tecniche non possono superare il 2 per cento dell'importo dei lavori, servizi e forniture posto a base delle procedure di affidamento; per servizi e forniture la regola si applica quando è nominato il direttore dell'esecuzione."
+  expected_refs: ["45/2"]
+  source_excerpt: "in misura non superiore al 2 per cento dell'importo dei lavori, dei servizi e delle forniture, posto a base delle procedure di affidamento. Il presente comma si applica anche agli appalti relativi a servizi o forniture nel caso in cui e' nominato il direttore dell'esecuzione."
+  difficulty: easy
+  status: bozza
+  notes: ""
+
+- id: Q019
+  question: "In quali casi il principio di rotazione vieta di affidare un nuovo appalto al contraente uscente?"
+  kind: answerable
+  category: rotazione
+  vigenza: "2026-10-11"
+  expected_answer: "È vietato affidare o aggiudicare l'appalto al contraente uscente quando due affidamenti consecutivi hanno a oggetto una commessa dello stesso settore merceologico, della stessa categoria di opere o dello stesso settore di servizi."
+  expected_refs: ["49/2"]
+  source_excerpt: "In applicazione del principio di rotazione e' vietato l'affidamento o l'aggiudicazione di un appalto al contraente uscente nei casi in cui due consecutivi affidamenti abbiano a oggetto una commessa rientrante nello stesso settore merceologico"
+  difficulty: medium
+  status: bozza
+  notes: "Reworded from 'mi impedisce di riaffidare al fornitore uscente?': a yes/no answer also needs the exceptions of commi 4 (motivated cases) and 6 (direct awards under 5.000 euro, see Q073), which comma 2 alone does not support."
+
+- id: Q020
+  question: "Se faccio un avviso di indagine di mercato aperto a tutti senza limitare il numero di invitati alla negoziata, devo applicare la rotazione?"
+  kind: answerable
+  category: rotazione
+  vigenza: "2026-10-11"
+  expected_answer: "No: per le procedure negoziate dell'articolo 50, comma 1, lettere c), d) ed e), la rotazione non si applica quando l'indagine di mercato è stata effettuata senza porre limiti al numero di operatori in possesso dei requisiti da invitare."
+  expected_refs: ["49/5"]
+  source_excerpt: "le stazioni appaltanti non applicano il principio di rotazione quando l'indagine di mercato sia stata effettuata senza porre limiti al numero di operatori economici in possesso dei requisiti richiesti da invitare alla successiva procedura negoziata."
+  difficulty: hard
+  status: bozza
+  notes: ""
+
+- id: Q021
+  question: "Fino a che importo posso affidare direttamente un lavoro di manutenzione?"
+  kind: answerable
+  category: affidamento_diretto
+  vigenza: "2026-10-11"
+  expected_answer: "L'affidamento diretto di lavori è ammesso per importi inferiori a 150.000 euro, anche senza consultare più operatori, scegliendo soggetti con documentate esperienze pregresse idonee."
+  expected_refs: ["50/1/a"]
+  source_excerpt: "a) affidamento diretto per lavori di importo inferiore a 150.000 euro, anche senza consultazione di piu' operatori economici"
+  difficulty: easy
+  status: bozza
+  notes: ""
+
+- id: Q022
+  question: "Per un lavoro da 600.000 euro sotto soglia quanti operatori devo invitare alla procedura negoziata?"
+  kind: answerable
+  category: procedure
+  vigenza: "2026-10-11"
+  expected_answer: "Per i lavori di importo pari o superiore a 150.000 euro e inferiore a 1 milione si usa la procedura negoziata senza bando, consultando almeno cinque operatori economici, ove esistenti, individuati con indagini di mercato o elenchi."
+  expected_refs: ["50/1/c"]
+  source_excerpt: "c) procedura negoziata senza bando, previa consultazione di almeno cinque operatori economici, ove esistenti, individuati in base a indagini di mercato o tramite elenchi di operatori economici, per i lavori di importo pari o superiore a 150.000 euro e inferiore a 1 milione di euro;"
+  difficulty: easy
+  status: bozza
+  notes: ""
+
+- id: Q023
+  question: "Possiamo scegliere a sorteggio gli operatori da invitare a una procedura negoziata?"
+  kind: answerable
+  category: procedure
+  vigenza: "2026-10-11"
+  expected_answer: "Di regola no: il sorteggio o altri metodi di estrazione casuale sono ammessi solo in situazioni particolari e specificamente motivate, quando nessun altro metodo di selezione è praticabile. Inoltre i nominativi degli operatori consultati vanno pubblicati sul sito istituzionale."
+  expected_refs: ["50/2"]
+  source_excerpt: "le stazioni appaltanti non possono utilizzare il sorteggio o altro metodo di estrazione casuale dei nominativi, se non in presenza di situazioni particolari e specificamente motivate, nei casi in cui non risulti praticabile nessun altro metodo di selezione degli operatori."
+  difficulty: medium
+  status: bozza
+  notes: ""
+
+- id: Q024
+  question: "Per un contratto sotto soglia posso usare il certificato di regolare esecuzione invece del collaudo? Entro quando va emesso?"
+  kind: answerable
+  category: esecuzione
+  vigenza: "2026-10-11"
+  expected_answer: "Sì, per i contratti sotto soglia il collaudo o la verifica di conformità possono essere sostituiti dal certificato di regolare esecuzione, rilasciato dal direttore dei lavori per i lavori e dal RUP o dal direttore dell'esecuzione per servizi e forniture, entro tre mesi dall'ultimazione delle prestazioni."
+  expected_refs: ["50/7"]
+  source_excerpt: "Il certificato di regolare esecuzione e' emesso non oltre tre mesi dalla data di ultimazione delle prestazioni oggetto del contratto."
+  difficulty: medium
+  status: bozza
+  notes: ""
+
+- id: Q025
+  question: "In una gara sotto soglia al prezzo più basso, quando scatta l'esclusione automatica delle offerte anomale?"
+  kind: answerable
+  category: procedure
+  vigenza: "2026-10-11"
+  expected_answer: "Per lavori o servizi sotto soglia senza interesse transfrontaliero certo, aggiudicati al prezzo più basso, gli atti di gara prevedono l'esclusione automatica delle offerte anomale se le offerte ammesse sono almeno cinque; non si applica agli affidamenti diretti dell'articolo 50, comma 1, lettere a) e b)."
+  expected_refs: ["54/1"]
+  source_excerpt: "prevedono negli atti di gara l'esclusione automatica delle offerte che risultano anomale, qualora il numero delle offerte ammesse sia pari o superiore a cinque. Il primo periodo non si applica agli affidamenti di cui all'articolo 50, comma 1, lettere a) e b)."
+  difficulty: medium
+  status: bozza
+  notes: ""
+
+- id: Q026
+  question: "I criteri ambientali minimi sono obbligatori nei capitolati?"
+  kind: answerable
+  category: principi
+  vigenza: "2026-10-11"
+  expected_answer: "Sì: le stazioni appaltanti inseriscono nella documentazione progettuale e di gara almeno le specifiche tecniche e le clausole contrattuali contenute nei criteri ambientali minimi definiti con decreto del Ministero dell'ambiente e della sicurezza energetica."
+  expected_refs: ["57/2"]
+  source_excerpt: "attraverso l'inserimento, nella documentazione progettuale e di gara, almeno delle specifiche tecniche e delle clausole contrattuali contenute nei criteri ambientali minimi"
+  difficulty: easy
+  status: bozza
+  notes: ""
+
+- id: Q027
+  question: "Quanto può durare al massimo un accordo quadro?"
+  kind: answerable
+  category: procedure
+  vigenza: "2026-10-11"
+  expected_answer: "Gli accordi quadro hanno durata non superiore a quattro anni, salvo casi eccezionali debitamente motivati, in particolare in relazione all'oggetto."
+  expected_refs: ["59/1"]
+  source_excerpt: "Le stazioni appaltanti possono concludere accordi quadro di durata non superiore a quattro anni, salvo casi eccezionali debitamente motivati, in particolare con riferimento all'oggetto dell'accordo quadro."
+  difficulty: easy
+  status: bozza
+  notes: ""
+
+- id: Q028
+  question: "Siamo una stazione appaltante non qualificata e abbiamo chiesto a una centrale qualificata di svolgere la gara: se non risponde, cosa succede?"
+  kind: answerable
+  category: qualificazione
+  vigenza: "2026-10-11"
+  expected_answer: "La richiesta si intende accolta se non arriva una risposta negativa entro dieci giorni dalla ricezione. In caso di risposta negativa ci si rivolge all'ANAC, che entro quindici giorni assegna d'ufficio la richiesta a una stazione appaltante o centrale di committenza qualificata."
+  expected_refs: ["62/10"]
+  source_excerpt: "si intende accolta se non riceve risposta negativa nel termine di dieci giorni dalla sua ricezione."
+  difficulty: hard
+  status: bozza
+  notes: ""
+
+- id: Q029
+  question: "La procedura aperta è andata deserta: posso passare a una procedura negoziata senza bando?"
+  kind: answerable
+  category: procedure
+  vigenza: "2026-10-11"
+  expected_answer: "Sì, se non è stata presentata alcuna offerta o alcuna offerta appropriata (né domanda di partecipazione appropriata) in una procedura aperta o ristretta, purché le condizioni iniziali dell'appalto non siano sostanzialmente modificate e si trasmetta una relazione alla Commissione europea se questa la richiede. La scelta va motivata nel primo atto della procedura."
+  expected_refs: ["76/2/a"]
+  source_excerpt: "quando non sia stata presentata alcuna offerta o alcuna offerta appropriata, ne' alcuna domanda di partecipazione o alcuna domanda di partecipazione appropriata, in esito all'esperimento di una procedura aperta o ristretta, purche' le condizioni iniziali dell'appalto non siano"
+  difficulty: medium
+  status: bozza
+  notes: "Art. 76, comma 1 requires the motivation in the first act of the procedure."
+
+- id: Q030
+  question: "Un'impresa ha un debito fiscale definitivamente accertato: può evitare l'esclusione pagandolo?"
+  kind: answerable
+  category: requisiti
+  vigenza: "2026-10-11"
+  expected_answer: "Sì, l'esclusione per gravi violazioni fiscali o contributive definitivamente accertate non opera se l'operatore ha pagato o si è impegnato in modo vincolante a pagare (anche interessi e sanzioni), o se il debito è estinto, purché ciò sia avvenuto prima della scadenza del termine per presentare l'offerta."
+  expected_refs: ["94/6"]
+  source_excerpt: "purche' l'estinzione, il pagamento o l'impegno si siano perfezionati anteriormente alla scadenza del termine di presentazione dell'offerta."
+  difficulty: medium
+  status: bozza
+  notes: ""
+
+- id: Q031
+  question: "Quali condizioni servono per escludere un concorrente per grave illecito professionale?"
+  kind: answerable
+  category: requisiti
+  vigenza: "2026-10-11"
+  expected_answer: "Devono ricorrere tutte e tre le condizioni: elementi sufficienti a integrare il grave illecito professionale, idoneità dell'illecito a incidere sull'affidabilità e integrità dell'operatore e adeguati mezzi di prova; il provvedimento deve motivare su tutte e tre."
+  expected_refs: ["98/2"]
+  source_excerpt: "a) elementi sufficienti ad integrare il grave illecito professionale; b) idoneita' del grave illecito professionale ad incidere sull'affidabilita' e integrita' dell'operatore; c) adeguati mezzi di prova di cui al comma 6."
+  difficulty: hard
+  status: bozza
+  notes: "Comma 8 requires the exclusion to be motivated on all three conditions."
+
+- id: Q032
+  question: "In una gara di forniture, quanto fatturato posso chiedere al massimo come requisito economico-finanziario?"
+  kind: answerable
+  category: requisiti
+  vigenza: "2026-10-11"
+  expected_answer: "Fino al regolamento previsto dall'articolo 226-bis, si può chiedere un fatturato globale non superiore al doppio del valore stimato dell'appalto, maturato nei migliori tre anni degli ultimi cinque precedenti l'indizione; con più lotti, di regola per ciascun lotto."
+  expected_refs: ["100/11"]
+  source_excerpt: "un fatturato globale non superiore al doppio del valore stimato dell'appalto, maturato nei migliori tre anni degli ultimi cinque anni precedenti a quello di indizione della procedura."
+  difficulty: medium
+  status: bozza
+  notes: ""
+
+- id: Q033
+  question: "Quanto tempo devo dare a un concorrente per il soccorso istruttorio?"
+  kind: answerable
+  category: soccorso_istruttorio
+  vigenza: "2026-10-11"
+  expected_answer: "La stazione appaltante assegna un termine non inferiore a cinque giorni e non superiore a dieci giorni, salvo che il documento sia già presente nel fascicolo virtuale alla scadenza delle offerte. Il soccorso non riguarda l'offerta tecnica ed economica."
+  expected_refs: ["101/1"]
+  source_excerpt: "la stazione appaltante assegna un termine non inferiore a cinque giorni e non superiore a dieci giorni per:"
+  difficulty: easy
+  status: bozza
+  notes: ""
+
+- id: Q034
+  question: "Posso usare l'avvalimento per l'iscrizione all'Albo nazionale gestori ambientali?"
+  kind: answerable
+  category: requisiti
+  vigenza: "2026-10-11"
+  expected_answer: "No, l'avvalimento non è ammesso per soddisfare il requisito dell'iscrizione all'Albo nazionale dei gestori ambientali."
+  expected_refs: ["104/10"]
+  source_excerpt: "L'avvalimento non e' ammesso per soddisfare il requisito dell'iscrizione all'Albo nazionale dei gestori ambientali"
+  difficulty: medium
+  status: bozza
+  notes: ""
+
+- id: Q035
+  question: "In una gara sopra soglia, una PMI con certificazione ISO 9001 di quanto può ridurre la garanzia provvisoria?"
+  kind: answerable
+  category: garanzie
+  vigenza: "2026-10-11"
+  expected_answer: "La garanzia si riduce del 30 per cento con la certificazione di qualità ISO 9000 e del 50 per cento per micro, piccole e medie imprese; le due riduzioni non sono cumulabili, quindi la PMI applica la riduzione del 50 per cento. Sono cumulabili l'ulteriore riduzione del 10 per cento per la fideiussione digitale gestita con registri distribuiti o verificabile telematicamente e quella fino al 20 per cento per le certificazioni dell'allegato II.13."
+  expected_refs: ["106/8"]
+  source_excerpt: "Si applica la riduzione del 50 per cento, non cumulabile con quella di cui al primo periodo, nei confronti delle micro, delle piccole e delle medie imprese"
+  difficulty: medium
+  status: bozza
+  notes: "Question limited to above-threshold procedures: art. 53, comma 4-bis excludes the art. 106, comma 8 reductions for below-threshold awards."
+
+- id: Q036
+  question: "In un appalto sopra soglia ho aggiudicato con un ribasso del 25 per cento: di quanto aumenta la garanzia definitiva?"
+  kind: answerable
+  category: garanzie
+  vigenza: "2026-10-11"
+  expected_answer: "Con ribassi oltre il 10 per cento la garanzia aumenta di tanti punti quanti sono quelli eccedenti il 10 per cento; oltre il 20 per cento l'aumento è di due punti per ogni punto di ribasso oltre il 20. Con il 25 per cento l'aumento è quindi di 10 punti (fino al 20) più 10 punti (5 x 2), cioè 20 punti percentuali."
+  expected_refs: ["117/2"]
+  source_excerpt: "la garanzia e' aumentata di tanti punti percentuali quanti sono quelli eccedenti il 10 per cento. Se il ribasso e' superiore al 20 per cento, l'aumento e' di due punti percentuali per ogni punto di ribasso superiore al 20 per cento."
+  difficulty: hard
+  status: bozza
+  notes: "Question limited to above-threshold contracts: art. 53, comma 4-bis excludes the comma 2 increases below the threshold. Arithmetic follows the usual reading (10 points up to 20%, then 2 per point); with the 10 per cento base of comma 1 the guarantee becomes 30 per cento. Reviewer should confirm."
+
+- id: Q037
+  question: "Se nell'offerta economica non indico i costi della manodopera vengo escluso?"
+  kind: answerable
+  category: criteri_aggiudicazione
+  vigenza: "2026-10-11"
+  expected_answer: "Sì: l'operatore indica a pena di esclusione i costi della manodopera e gli oneri aziendali per la sicurezza, salvo nelle forniture senza posa in opera e nei servizi di natura intellettuale."
+  expected_refs: ["108/9"]
+  source_excerpt: "Nell'offerta economica l'operatore indica, a pena di esclusione, i costi della manodopera e gli oneri aziendali per l'adempimento delle disposizioni in materia di salute e sicurezza sui luoghi di lavoro eccetto che nelle forniture senza posa in opera e nei servizi di natura intellettuale."
+  difficulty: medium
+  status: bozza
+  notes: ""
+
+- id: Q038
+  question: "Quale quota dei subappalti deve andare a piccole e medie imprese?"
+  kind: answerable
+  category: subappalto
+  vigenza: "2026-10-11"
+  expected_answer: "I contratti di subappalto sono stipulati, in misura non inferiore al 20 per cento delle prestazioni subappaltabili, con PMI; l'operatore può indicare nell'offerta una soglia diversa per ragioni legate all'oggetto, alle caratteristiche delle prestazioni o al mercato."
+  expected_refs: ["119/2"]
+  source_excerpt: "I contratti di subappalto sono stipulati, in misura non inferiore al 20 per cento delle prestazioni subappaltabili, con piccole e medie imprese"
+  difficulty: hard
+  status: bozza
+  notes: ""
+
+- id: Q039
+  question: "Quando la stazione appaltante paga direttamente il subappaltatore?"
+  kind: answerable
+  category: subappalto
+  vigenza: "2026-10-11"
+  expected_answer: "Il pagamento diretto avviene quando il subcontraente è una microimpresa o piccola impresa, in caso di inadempimento dell'appaltatore, oppure su richiesta del subcontraente se la natura del contratto lo consente."
+  expected_refs: ["119/11"]
+  source_excerpt: "a) quando il subcontraente e' una microimpresa o piccola impresa; b) in caso di inadempimento da parte dell'appaltatore; c) su richiesta del subcontraente e se la natura del contratto lo consente."
+  difficulty: medium
+  status: bozza
+  notes: ""
+
+- id: Q040
+  question: "Posso imporre all'appaltatore un aumento delle prestazioni del 15 per cento alle stesse condizioni?"
+  kind: answerable
+  category: esecuzione
+  vigenza: "2026-10-11"
+  expected_answer: "Sì, se i documenti di gara iniziali lo prevedono: entro il quinto dell'importo del contratto la stazione appaltante può imporre l'aumento o la diminuzione alle condizioni originarie e l'appaltatore non può chiedere la risoluzione."
+  expected_refs: ["120/9"]
+  source_excerpt: "qualora in corso di esecuzione si renda necessario un aumento o una diminuzione delle prestazioni fino a concorrenza del quinto dell'importo del contratto, la stazione appaltante possa imporre all'appaltatore l'esecuzione alle condizioni originariamente previste."
+  difficulty: easy
+  status: bozza
+  notes: ""
+
+- id: Q041
+  question: "Il contratto delle pulizie scade e la nuova gara non è conclusa: posso prorogare il contratto in essere?"
+  kind: answerable
+  category: esecuzione
+  vigenza: "2026-10-11"
+  expected_answer: "Solo in casi eccezionali, per ritardi oggettivi e insuperabili della nuova procedura e per il tempo strettamente necessario, se l'interruzione può creare pericolo per persone, animali, cose o per l'igiene pubblica, o un grave danno all'interesse pubblico; l'appaltatore uscente esegue ai prezzi, patti e condizioni del contratto."
+  expected_refs: ["120/11"]
+  source_excerpt: "e' consentito, per il tempo strettamente necessario alla conclusione della procedura, prorogare il contratto con l'appaltatore uscente qualora l'interruzione delle prestazioni possa determinare situazioni di pericolo per persone, animali, cose, oppure per l'igiene pubblica"
+  difficulty: medium
+  status: bozza
+  notes: ""
+
+- id: Q042
+  question: "Dopo quanto tempo di sospensione dei lavori l'impresa può chiedere la risoluzione del contratto?"
+  kind: answerable
+  category: esecuzione
+  vigenza: "2026-10-11"
+  expected_answer: "Quando le sospensioni superano un quarto della durata complessiva prevista per l'esecuzione o comunque sei mesi complessivi, l'esecutore può chiedere la risoluzione senza indennità; se la stazione appaltante si oppone, ha diritto alla rifusione dei maggiori oneri."
+  expected_refs: ["121/5"]
+  source_excerpt: "Qualora la sospensione o le sospensioni, durino per un periodo di tempo superiore a un quarto della durata complessiva prevista per l'esecuzione dei lavori stessi, o comunque quando superino sei mesi complessivi, l'esecutore puo' chiedere la risoluzione del contratto senza indennita'"
+  difficulty: medium
+  status: bozza
+  notes: ""
+
+- id: Q043
+  question: "A quanto ammonta l'anticipazione del prezzo all'appaltatore?"
+  kind: answerable
+  category: esecuzione
+  vigenza: "2026-10-11"
+  expected_answer: "L'anticipazione è pari al 20 per cento del valore del contratto e i documenti di gara possono prevederne l'incremento fino al 30 per cento; nei lavori è corrisposta entro quindici giorni dall'effettivo inizio della prestazione."
+  expected_refs: ["125/1"]
+  source_excerpt: "Sul valore del contratto di appalto e' calcolato l'importo dell'anticipazione del prezzo pari al 20 per cento. Nei documenti di gara puo' essere previsto un incremento dell'anticipazione del prezzo fino al 30 per cento."
+  difficulty: easy
+  status: bozza
+  notes: ""
+
+- id: Q044
+  question: "Entro quanto tempo va completato il collaudo dei lavori e quando diventa definitivo?"
+  kind: answerable
+  category: esecuzione
+  vigenza: "2026-10-11"
+  expected_answer: "Il collaudo finale va completato entro sei mesi dall'ultimazione dei lavori (fino a un anno nei casi di particolare complessità individuati dall'allegato II.14). Il certificato è provvisorio e diventa definitivo dopo due anni dall'emissione."
+  expected_refs: ["116/2"]
+  source_excerpt: "Il collaudo finale o la verifica di conformita' deve essere completato non oltre sei mesi dall'ultimazione dei lavori o delle prestazioni"
+  difficulty: medium
+  status: bozza
+  notes: ""
+
+- id: Q045
+  question: "Come si calcolano le penali per ritardo e qual è il tetto massimo?"
+  kind: answerable
+  category: esecuzione
+  vigenza: "2026-10-11"
+  expected_answer: "Le penali sono giornaliere, tra lo 0,5 per mille e l'1,5 per mille dell'ammontare netto contrattuale in relazione alle conseguenze del ritardo, e complessivamente non possono superare il 10 per cento di tale ammontare."
+  expected_refs: ["126/1"]
+  source_excerpt: "Le penali dovute per il ritardato adempimento sono calcolate in misura giornaliera compresa tra lo 0,5 per mille e l'1,5 per mille dell'ammontare netto contrattuale"
+  difficulty: easy
+  status: bozza
+  notes: ""
+
+- id: Q046
+  question: "In caso di somma urgenza, entro quale importo il RUP può disporre l'esecuzione immediata dei lavori?"
+  kind: answerable
+  category: procedure
+  vigenza: "2026-10-11"
+  expected_answer: "Il RUP o altro tecnico che si reca per primo sul luogo può disporre l'immediata esecuzione dei lavori entro 500.000 euro o, se superiore, entro quanto indispensabile per rimuovere il pregiudizio alla pubblica e privata incolumità, comunque nel limite della soglia europea."
+  expected_refs: ["140/1"]
+  source_excerpt: "puo' disporre la immediata esecuzione dei lavori entro il limite di 500.000 euro o , se superiore, nel limite di quanto indispensabile per rimuovere lo stato di pregiudizio alla pubblica e privata incolumita' , comunque nel limite della soglia europea."
+  difficulty: medium
+  status: bozza
+  notes: ""
+
+- id: Q047
+  question: "Che cosa distingue una concessione da un appalto quanto al rischio?"
+  kind: answerable
+  category: concessioni
+  vigenza: "2026-10-11"
+  expected_answer: "Con la concessione si trasferisce al concessionario un rischio operativo legato alla realizzazione dei lavori o alla gestione dei servizi, che comprende un rischio dal lato della domanda, dell'offerta o di entrambi."
+  expected_refs: ["177/1"]
+  source_excerpt: "L'aggiudicazione di una concessione comporta il trasferimento al concessionario di un rischio operativo legato alla realizzazione dei lavori o alla gestione dei servizi e comprende un rischio dal lato della domanda o dal lato dell'offerta o da entrambi."
+  difficulty: medium
+  status: bozza
+  notes: ""
+
+- id: Q048
+  question: "Nella finanza di progetto, se il promotore non vince la gara cosa può fare?"
+  kind: answerable
+  category: concessioni
+  vigenza: "2026-10-11"
+  expected_answer: "Può esercitare la prelazione entro quindici giorni dalla comunicazione dell'aggiudicazione, impegnandosi alle stesse condizioni dell'aggiudicatario. Se non la esercita ha diritto al rimborso, a carico dell'aggiudicatario, delle spese per la proposta, entro il 2,5 per cento del valore dell'investimento."
+  expected_refs: ["193/12"]
+  source_excerpt: "puo' esercitare, entro quindici giorni dalla comunicazione dell'aggiudicazione, il diritto di prelazione e divenire aggiudicatario se dichiara di impegnarsi ad adempiere alle obbligazioni contrattuali alle medesime condizioni offerte dall'aggiudicatario."
+  difficulty: hard
+  status: bozza
+  notes: ""
+
+- id: Q049
+  question: "Il collegio consultivo tecnico è obbligatorio?"
+  kind: answerable
+  category: contenzioso
+  vigenza: "2026-10-11"
+  expected_answer: "Ciascuna parte può chiederne la costituzione; è obbligatorio per i lavori diretti alla realizzazione di opere pubbliche, anche in concessione o PPP, di importo pari o superiore alle soglie europee."
+  expected_refs: ["215/1"]
+  source_excerpt: "Per i lavori diretti alla realizzazione delle opere pubbliche, incluse quelle realizzate tramite contratti di concessione o di partenariato pubblico-privato, di importo pari o superiore alle soglie di rilevanza europea la costituzione del collegio e' obbligatoria."
+  difficulty: medium
+  status: bozza
+  notes: ""
+
+- id: Q050
+  question: "Un'azienda sanitaria vuole chiudere con una transazione una controversia da 150.000 euro su una fornitura: serve un parere?"
+  kind: answerable
+  category: contenzioso
+  vigenza: "2026-10-11"
+  expected_answer: "Sì: per servizi e forniture oltre 100.000 euro (200.000 per i lavori) serve un parere; per un'amministrazione sub centrale è quello di un legale interno o, in mancanza, del funzionario più elevato in grado competente per il contenzioso."
+  expected_refs: ["212/2"]
+  source_excerpt: "Ove il valore dell'importo oggetto di concessione o rinuncia sia superiore a 100.000 euro, ovvero a 200.000 euro in caso di lavori pubblici, e' acquisito"
+  difficulty: hard
+  status: bozza
+  notes: "Assumes the health authority is an amministrazione sub centrale."
+
+- id: Q051
+  question: "Entro quanti mesi deve concludersi una procedura aperta aggiudicata con l'offerta economicamente più vantaggiosa?"
+  kind: answerable
+  category: procedure
+  vigenza: "2026-10-11"
+  expected_answer: "Secondo l'allegato I.3, con il criterio dell'offerta economicamente più vantaggiosa la procedura aperta si conclude in nove mesi, decorrenti dalla pubblicazione del bando fino all'aggiudicazione."
+  expected_refs: ["all:I.3/p1"]
+  source_excerpt: "a) procedura aperta: nove mesi;"
+  difficulty: medium
+  status: bozza
+  notes: "Allegato I.3 has no articles: key uses the numbered block. Block 3 sets when the term starts."
+
+- id: Q052
+  question: "Per quanti giorni va pubblicato l'avviso di indagine di mercato per una procedura negoziata sotto soglia?"
+  kind: answerable
+  category: procedure
+  vigenza: "2026-10-11"
+  expected_answer: "L'avviso va pubblicato sul sito istituzionale e sulla Banca dati nazionale dei contratti pubblici per almeno quindici giorni, riducibili per motivate ragioni di urgenza a non meno di cinque giorni."
+  expected_refs: ["all:II.1/2/2"]
+  source_excerpt: "La durata della pubblicazione e' stabilita in ragione della rilevanza del contratto, per un periodo minimo identificabile in quindici giorni, salva la riduzione del suddetto termine per motivate ragioni di urgenza a non meno di cinque giorni."
+  difficulty: medium
+  status: bozza
+  notes: "Allegato II.1, art. 2, comma 2."
+
+- id: Q053
+  question: "Alla data del 1° giugno 2024, quando scattava la revisione prezzi in un appalto di lavori e in che misura operava?"
+  kind: temporal
+  category: esecuzione
+  vigenza: "2024-06-01"
+  expected_answer: "Le clausole di revisione prezzi si attivavano per una variazione del costo dell'opera, in aumento o in diminuzione, superiore al 5 per cento dell'importo complessivo e operavano nella misura dell'80 per cento della variazione stessa."
+  expected_refs: ["60/2"]
+  source_excerpt: "una variazione del costo dell'opera, della fornitura o del servizio, in aumento o in diminuzione, superiore al 5 per cento dell'importo complessivo e operano nella misura dell'80 per cento della variazione stessa"
+  difficulty: medium
+  status: bozza
+  notes: "Pair with Q054. Text before D.Lgs. 209/2024."
+
+- id: Q054
+  question: "Oggi, quando scatta la revisione prezzi in un appalto di lavori e in che misura opera?"
+  kind: temporal
+  category: esecuzione
+  vigenza: "2026-10-11"
+  expected_answer: "Per i lavori la clausola si attiva con una variazione del costo dell'opera superiore al 3 per cento dell'importo complessivo e opera per il 90 per cento del valore eccedente il 3 per cento; per servizi e forniture restano il 5 per cento e l'80 per cento dell'eccedenza."
+  expected_refs: ["60/2"]
+  source_excerpt: "superiore al 3 per cento dell'importo complessivo e operano nella misura del 90 per cento del valore eccedente la variazione del 3 per cento applicata alle prestazioni da eseguire"
+  difficulty: medium
+  status: bozza
+  notes: "Pair with Q053. Changed by D.Lgs. 209/2024 (in force 31/12/2024)."
+
+- id: Q055
+  question: "Alla data del 1° giugno 2024, il codice consentiva espressamente a una stazione appaltante priva di personale con i requisiti di nominare RUP un dipendente di un'altra amministrazione?"
+  kind: temporal
+  category: rup
+  vigenza: "2024-06-01"
+  expected_answer: "No: il comma 2 allora vigente prevedeva la nomina del RUP tra i dipendenti, anche a tempo determinato, della stazione appaltante e, in mancanza di nomina, l'attribuzione dell'incarico al responsabile dell'unità organizzativa competente; la nomina tra dipendenti di altre amministrazioni non era espressamente prevista."
+  expected_refs: ["15/2"]
+  source_excerpt: "In caso di mancata nomina del RUP nell'atto di avvio dell'intervento pubblico, l'incarico e' svolto dal responsabile dell'unita' organizzativa competente per l'intervento."
+  difficulty: hard
+  status: bozza
+  notes: "Pair with Q056. Reworded to 'consentiva espressamente' because the answer rests on the absence of the sentence added by D.Lgs. 209/2024 (in force 31/12/2024); the 2024 text of allegato I.2 has no such rule either."
+
+- id: Q056
+  question: "Oggi una stazione appaltante senza personale con i requisiti può nominare RUP un dipendente di un'altra amministrazione?"
+  kind: temporal
+  category: rup
+  vigenza: "2026-10-11"
+  expected_answer: "Sì: in caso di accertata carenza in organico di personale con i requisiti dell'allegato I.2, la stazione appaltante può nominare il RUP tra i dipendenti di altre amministrazioni pubbliche."
+  expected_refs: ["15/2"]
+  source_excerpt: "Resta in ogni caso ferma la possibilita' per le stazioni appaltanti, in caso di accertata carenza nel proprio organico di personale in possesso dei requisiti di cui all'allegato I.2., di nominare il RUP tra i dipendenti di altre amministrazioni pubbliche."
+  difficulty: medium
+  status: bozza
+  notes: "Pair with Q055. Added by D.Lgs. 209/2024."
+
+- id: Q057
+  question: "Al 1° giugno 2025, l'elenco dell'articolo 108, comma 2, dei contratti da aggiudicare esclusivamente con l'offerta economicamente più vantaggiosa menzionava i servizi di trasporto per le gite scolastiche?"
+  kind: temporal
+  category: criteri_aggiudicazione
+  vigenza: "2025-06-01"
+  expected_answer: "No: a quella data l'elenco del comma 2 (lettere da a) a f)) non menzionava i servizi di trasporto per uscite didattiche e viaggi di istruzione; l'obbligo poteva derivare solo da un'altra lettera, ad esempio se si trattava di un servizio ad alta intensità di manodopera (lettera a))."
+  expected_refs: ["108/2"]
+  source_excerpt: "e) gli affidamenti di appalto integrato; f) i contratti relativi ai lavori caratterizzati da notevole contenuto tecnologico o con carattere innovativo."
+  difficulty: hard
+  status: bozza
+  notes: "Pair with Q058. Reworded from 'doveva essere aggiudicato obbligatoriamente': lettera a) (servizi ad alta intensità di manodopera) could already apply, so a flat 'No' was not supported. Lettera f-bis is in force from 10/09/2025 (D.L. 127/2025; first visible in the 2025-11-05 export, whose expression date is 2025-09-10)."
+
+- id: Q058
+  question: "Oggi il servizio di trasporto per le gite scolastiche deve essere aggiudicato con l'offerta economicamente più vantaggiosa?"
+  kind: temporal
+  category: criteri_aggiudicazione
+  vigenza: "2026-10-11"
+  expected_answer: "Sì: i contratti relativi ai servizi di trasporto per uscite didattiche e viaggi di istruzione delle istituzioni scolastiche sono aggiudicati esclusivamente con l'offerta economicamente più vantaggiosa basata sul miglior rapporto qualità/prezzo."
+  expected_refs: ["108/2/f-bis"]
+  source_excerpt: "f-bis) i contratti relativi ai servizi di trasporto nell'ambito delle uscite didattiche e dei viaggi di istruzione di competenza delle istituzioni scolastiche di ogni ordine e grado."
+  difficulty: medium
+  status: bozza
+  notes: "Pair with Q057. Lettera f-bis is in force from 10/09/2025 (D.L. 127/2025, per the Normattiva expression date)."
+
+- id: Q059
+  question: "Al 31 dicembre 2025, con quali somme si finanziava il premio di accelerazione nei lavori?"
+  kind: temporal
+  category: esecuzione
+  vigenza: "2025-12-31"
+  expected_answer: "Il premio era commisurato ai giorni di anticipo nei limiti delle somme disponibili indicate nel quadro economico alla voce 'imprevisti'; non era previsto l'uso delle economie da ribasso d'asta."
+  expected_refs: ["126/2"]
+  source_excerpt: "L'ammontare del premio e' commisurato, nei limiti delle somme disponibili, indicate nel quadro economico dell'intervento alla voce 'imprevisti', ai giorni di anticipo"
+  difficulty: medium
+  status: bozza
+  notes: "Pair with Q060."
+
+- id: Q060
+  question: "Oggi, con quali somme si finanzia il premio di accelerazione nei lavori?"
+  kind: temporal
+  category: esecuzione
+  vigenza: "2026-10-11"
+  expected_answer: "Il premio è commisurato ai giorni di anticipo nei limiti delle somme della voce 'imprevisti' del quadro economico e anche nel limite del 50 per cento delle economie derivanti dai ribassi d'asta."
+  expected_refs: ["126/2"]
+  source_excerpt: "nei limiti delle somme disponibili, indicate nel quadro economico dell'intervento alla voce 'imprevisti', nonche' nel limite del 50 per cento delle economie derivanti dai ribassi d'asta"
+  difficulty: medium
+  status: bozza
+  notes: "Pair with Q059. Changed with effect from 01/01/2026 (L. 199/2025), per the expression date of the 2026-03-23 export."
+
+- id: Q061
+  question: "Al 1° marzo 2026, secondo il comma 5 dell'articolo 67, quali consorzi potevano partecipare facendo valere mezzi d'opera, attrezzature e organico medio delle consorziate?"
+  kind: temporal
+  category: requisiti
+  vigenza: "2026-03-01"
+  expected_answer: "Il comma 5 si riferiva solo ai consorzi di cooperative e ai consorzi tra imprese artigiane, che partecipavano con requisiti propri facendo valere anche mezzi d'opera, attrezzature e organico medio delle consorziate."
+  expected_refs: ["67/5"]
+  source_excerpt: "I consorzi di cooperative e i consorzi tra imprese artigiane possono partecipare alla procedura di gara"
+  difficulty: hard
+  status: bozza
+  notes: "Pair with Q062. Vigenza moved from 2026-06-01 to 2026-03-01: the 2026-08-11 export has expression date 2026-04-07, i.e. the consorzi stabili wording (L. 34/2026, published 23/03/2026) is in force from 07/04/2026, so on 1 June 2026 the new text already applied."
+
+- id: Q062
+  question: "Oggi, secondo il comma 5 dell'articolo 67, quali consorzi possono partecipare facendo valere mezzi d'opera, attrezzature e organico medio delle consorziate?"
+  kind: temporal
+  category: requisiti
+  vigenza: "2026-10-11"
+  expected_answer: "I consorzi di cooperative, i consorzi tra imprese artigiane e anche i consorzi stabili, che possono usare requisiti propri oppure far valere mezzi d'opera, attrezzature e organico medio delle consorziate secondo l'allegato II.12."
+  expected_refs: ["67/5"]
+  source_excerpt: "I consorzi di cooperative, i consorzi tra imprese artigiane e i consorzi stabili possono partecipare alla procedura di gara"
+  difficulty: hard
+  status: bozza
+  notes: "Pair with Q061. Changed with effect from 07/04/2026 (L. 34/2026), per the expression date of the 2026-08-11 export."
+
+- id: Q063
+  question: "Al 1° giugno 2026, la lettera a) del comma 6 dell'articolo 116 vietava espressamente l'incarico di collaudo a un magistrato tributario in servizio?"
+  kind: temporal
+  category: esecuzione
+  vigenza: "2026-06-01"
+  expected_answer: "No: a quella data la lettera a) vietava gli incarichi di collaudo e verifica di conformità ai magistrati ordinari, amministrativi e contabili e agli avvocati e procuratori dello Stato in servizio, senza menzionare i magistrati tributari."
+  expected_refs: ["116/6/a"]
+  source_excerpt: "a) ai magistrati ordinari, amministrativi e contabili, e agli avvocati e procuratori dello Stato, in attivita' di servizio"
+  difficulty: hard
+  status: bozza
+  notes: "Pair with Q064. Vigenza moved from 2026-09-01 to 2026-06-01: the new lettera a) appears only in the 2026-10-11 snapshot, whose lifecycle lists no amendment after D.Lgs. 149/2026 (11/08/2026), so it was probably already in force on 1 September 2026 although the 2026-08-11 snapshot does not show it. Lettera a) is unchanged in every snapshot from 2024-12-31 to 2026-08-11. Other letters (e.g. b, conflict of interest) may still apply."
+
+- id: Q064
+  question: "Oggi a un magistrato tributario in servizio può essere affidato un incarico di collaudo?"
+  kind: temporal
+  category: esecuzione
+  vigenza: "2026-10-11"
+  expected_answer: "No: il divieto della lettera a) riguarda ora i magistrati ordinari, amministrativi, contabili e tributari, oltre agli avvocati e procuratori dello Stato in servizio."
+  expected_refs: ["116/6/a"]
+  source_excerpt: "a) ai magistrati ordinari, amministrativi, contabili, tributari, e agli avvocati e procuratori dello Stato, in attivita' di servizio;"
+  difficulty: medium
+  status: bozza
+  notes: "Pair with Q063. Changed with effect from 26/08/2026 (D.Lgs. 149/2026, published 11/08/2026), per the expression date of the 2026-10-11 export. Reviewer to confirm on Normattiva."
+
+- id: Q065
+  question: "Le ASL pugliesi sono obbligate a usare la piattaforma regionale EmPULIA per le gare sotto soglia?"
+  kind: unanswerable
+  category: digitalizzazione
+  vigenza: "2026-10-11"
+  expected_answer: "Il codice non lo dice: impone l'uso di piattaforme di approvvigionamento digitale certificate, ma non individua le piattaforme regionali né gli obblighi previsti dalla normativa della Regione Puglia."
+  expected_refs: []
+  source_excerpt: ""
+  difficulty: medium
+  status: bozza
+  notes: "Regional rule outside the Code."
+
+- id: Q066
+  question: "Nella nostra ASL chi firma la determina a contrarre per un acquisto da 30.000 euro, il direttore di struttura o il direttore generale?"
+  kind: unanswerable
+  category: affidamento_diretto
+  vigenza: "2026-10-11"
+  expected_answer: "Il codice non lo stabilisce: richiede l'adozione della decisione di contrarre, ma l'organo competente a firmarla dipende dall'ordinamento interno e dagli atti di delega dell'azienda."
+  expected_refs: []
+  source_excerpt: ""
+  difficulty: easy
+  status: bozza
+  notes: "Internal organisation of the health authority."
+
+- id: Q067
+  question: "Che aliquota IVA si applica alla fornitura di dispositivi medici a un'azienda sanitaria?"
+  kind: unanswerable
+  category: soglie
+  vigenza: "2026-10-11"
+  expected_answer: "Il codice dei contratti pubblici non disciplina le aliquote IVA: si limita a calcolare il valore degli appalti al netto dell'IVA. L'aliquota dipende dalla normativa fiscale."
+  expected_refs: []
+  source_excerpt: ""
+  difficulty: easy
+  status: bozza
+  notes: "Tax law, not in the Code."
+
+- id: Q068
+  question: "Che pena rischia chi turba una gara d'appalto con collusioni o promesse?"
+  kind: unanswerable
+  category: contenzioso
+  vigenza: "2026-10-11"
+  expected_answer: "Il codice dei contratti non prevede le pene per la turbata libertà degli incanti: sono disciplinate dal codice penale. Il codice regola solo le conseguenze amministrative, come le cause di esclusione."
+  expected_refs: []
+  source_excerpt: ""
+  difficulty: medium
+  status: bozza
+  notes: "Criminal law outside the Code."
+
+- id: Q069
+  question: "Come si calcola la quota di payback sui dispositivi medici a carico delle aziende fornitrici?"
+  kind: unanswerable
+  category: esecuzione
+  vigenza: "2026-10-11"
+  expected_answer: "Il codice dei contratti pubblici non disciplina il payback sui dispositivi medici, che è regolato dalla legislazione sulla spesa sanitaria."
+  expected_refs: []
+  source_excerpt: ""
+  difficulty: medium
+  status: bozza
+  notes: "Health-spending legislation outside the Code."
+
+- id: Q070
+  question: "Quanto deve versare all'ANAC un'impresa che partecipa a una gara da 300.000 euro?"
+  kind: unanswerable
+  category: procedure
+  vigenza: "2026-10-11"
+  expected_answer: "Il codice non indica l'importo dei contributi dovuti all'ANAC: rinvia alla legge 266/2005 e gli importi sono fissati con provvedimenti dell'Autorità."
+  expected_refs: []
+  source_excerpt: ""
+  difficulty: medium
+  status: bozza
+  notes: "Art. 222, comma 12 only refers to art. 1, comma 67, L. 266/2005; no figures in the Code."
+
+- id: Q071
+  question: "Quali detergenti sono ammessi dai CAM nel servizio di pulizia e sanificazione delle strutture sanitarie?"
+  kind: unanswerable
+  category: principi
+  vigenza: "2026-10-11"
+  expected_answer: "Il codice impone di inserire nei documenti di gara i criteri ambientali minimi, ma il loro contenuto (ad esempio i prodotti ammessi) è definito dai decreti ministeriali sui CAM, non dal codice."
+  expected_refs: []
+  source_excerpt: ""
+  difficulty: hard
+  status: bozza
+  notes: "Art. 57 refers to the CAM decrees without listing their content."
+
+- id: Q072
+  question: "Quanto spetta a un commissario esterno della commissione giudicatrice per ogni seduta?"
+  kind: unanswerable
+  category: procedure
+  vigenza: "2026-10-11"
+  expected_answer: "Il codice non fissa il compenso dei componenti della commissione giudicatrice: l'articolo 93 ne disciplina composizione e incompatibilità, ma non gli importi."
+  expected_refs: []
+  source_excerpt: ""
+  difficulty: medium
+  status: bozza
+  notes: "Allegato II.14 sets fees for collaudo commissions, not for the commissione giudicatrice."
+
+- id: Q073
+  question: "Devo comprare toner per 4.000 euro e vorrei rivolgermi di nuovo allo stesso fornitore dell'anno scorso: posso farlo con affidamento diretto?"
+  kind: multi
+  category: affidamento_diretto
+  vigenza: "2026-10-11"
+  expected_answer: "Sì: l'affidamento diretto di forniture è ammesso sotto i 140.000 euro. La rotazione vieterebbe di riaffidare al contraente uscente nello stesso settore merceologico, ma per gli affidamenti diretti inferiori a 5.000 euro si può derogare alla rotazione."
+  expected_refs: ["50/1/b", "49/2", "49/6"]
+  source_excerpt: "E' comunque consentito derogare all'applicazione del principio di rotazione per gli affidamenti diretti di importo inferiore a 5.000 euro."
+  difficulty: medium
+  status: bozza
+  notes: ""
+
+- id: Q074
+  question: "In una procedura negoziata sotto soglia per servizi devo chiedere la garanzia provvisoria? Se sì, di quale importo, e cosa cambia rispetto a una gara sopra soglia?"
+  kind: multi
+  category: garanzie
+  vigenza: "2026-10-11"
+  expected_answer: "Sotto soglia la garanzia provvisoria di regola non si chiede; nelle procedure negoziate si può chiedere solo per particolari esigenze motivate, e non può superare l'1 per cento dell'importo. Nelle gare ordinarie è invece pari al 2 per cento del valore della procedura, modulabile dall'1 al 4 per cento."
+  expected_refs: ["53/1", "53/2", "106/1"]
+  source_excerpt: "Quando e' richiesta la garanzia provvisoria, il relativo ammontare non puo' superare l'uno per cento dell'importo previsto nell'avviso o nell'invito per il contratto oggetto di affidamento."
+  difficulty: medium
+  status: bozza
+  notes: ""
+
+- id: Q075
+  question: "Per un contratto sotto soglia quanto vale la garanzia definitiva rispetto a una gara ordinaria, e si applicano gli aumenti per ribasso?"
+  kind: multi
+  category: garanzie
+  vigenza: "2026-10-11"
+  expected_answer: "Sotto soglia la garanzia definitiva può non essere richiesta in casi motivati e, se richiesta, è pari al 5 per cento dell'importo contrattuale, senza le riduzioni dell'articolo 106 né gli aumenti per ribasso dell'articolo 117. Nelle gare ordinarie è pari al 10 per cento dell'importo contrattuale."
+  expected_refs: ["53/4", "53/4-bis", "117/1"]
+  source_excerpt: "Alla garanzia provvisoria e definitiva non si applicano le riduzioni previste dall'articolo 106, comma 8, e gli aumenti previsti dall'articolo 117, comma 2."
+  difficulty: hard
+  status: bozza
+  notes: ""
+
+- id: Q076
+  question: "Per un affidamento diretto da 25.000 euro come si controllano i requisiti e cosa succede se poi risultano falsi?"
+  kind: multi
+  category: affidamento_diretto
+  vigenza: "2026-10-11"
+  expected_answer: "Sotto i 40.000 euro l'operatore attesta i requisiti con dichiarazione sostitutiva e la stazione appaltante le verifica, anche a campione con sorteggio annuale. Se i requisiti non sono confermati si risolve il contratto, si escute l'eventuale garanzia definitiva, si comunica all'ANAC e l'operatore è sospeso dalle procedure della stessa stazione appaltante da uno a dodici mesi."
+  expected_refs: ["52/1", "52/2"]
+  source_excerpt: "gli operatori economici attestano con dichiarazione sostitutiva di atto di notorieta' il possesso dei requisiti di partecipazione e di qualificazione richiesti."
+  difficulty: medium
+  status: bozza
+  notes: ""
+
+- id: Q077
+  question: "Dopo l'aggiudicazione di un appalto sotto soglia devo aspettare lo stand still prima di firmare? E sopra soglia?"
+  kind: multi
+  category: procedure
+  vigenza: "2026-10-11"
+  expected_answer: "Sotto soglia i termini dilatori non si applicano e il contratto si stipula entro trenta giorni dall'aggiudicazione. Sopra soglia il contratto non può essere stipulato prima di trentadue giorni dall'invio dell'ultima comunicazione dell'aggiudicazione, salvo le eccezioni previste."
+  expected_refs: ["55/1", "55/2", "18/3"]
+  source_excerpt: "Il contratto non puo' essere stipulato prima di trentadue giorni dall'invio dell'ultima delle comunicazioni del provvedimento di aggiudicazione."
+  difficulty: medium
+  status: bozza
+  notes: ""
+
+- id: Q078
+  question: "Durante i lavori emerge un rinvenimento imprevisto che richiede una variante: è ammessa senza nuova gara e con quali limiti di importo?"
+  kind: multi
+  category: esecuzione
+  vigenza: "2026-10-11"
+  expected_answer: "Sì: i rinvenimenti imprevisti o non prevedibili in progettazione rientrano tra le varianti in corso d'opera ammesse senza nuova procedura, se la struttura del contratto resta inalterata, con un aumento di prezzo non superiore al 50 per cento del valore iniziale per ciascuna modifica. Diversamente, senza presupposti specifici, le modifiche sono ammesse sotto la soglia europea e sotto il 15 per cento del valore iniziale per i lavori."
+  expected_refs: ["120/1/c", "120/2", "120/3"]
+  source_excerpt: "il contratto puo' essere modificato solo se l'eventuale aumento di prezzo non ecceda il 50 per cento del valore del contratto iniziale."
+  difficulty: hard
+  status: bozza
+  notes: ""
+
+- id: Q079
+  question: "Come impresa voglio subappaltare una parte dei lavori: cosa devo fare e quanto tempo ha la stazione appaltante per autorizzarmi?"
+  kind: multi
+  category: subappalto
+  vigenza: "2026-10-11"
+  expected_answer: "Il subappalto richiede l'autorizzazione della stazione appaltante, che il subappaltatore sia qualificato e senza cause di esclusione e che le parti da subappaltare siano state indicate nell'offerta. Il contratto di subappalto va trasmesso almeno venti giorni prima dell'inizio delle prestazioni e l'autorizzazione è rilasciata entro trenta giorni dalla richiesta (prorogabili una volta), trascorsi i quali si intende concessa."
+  expected_refs: ["119/4", "119/5", "119/16"]
+  source_excerpt: "La stazione appaltante rilascia l'autorizzazione di cui al comma 4 entro trenta giorni dalla relativa richiesta; tale termine puo' essere prorogato una sola volta, quando ricorrano giustificati motivi. Trascorso tale termine senza che si sia provveduto, l'autorizzazione si intende concessa."
+  difficulty: medium
+  status: bozza
+  notes: ""
+
+- id: Q080
+  question: "L'impresa ha iscritto riserve pari al 10 per cento del contratto di lavori: come funziona l'accordo bonario e quanto tempo hanno le parti per accettare la proposta?"
+  kind: multi
+  category: contenzioso
+  vigenza: "2026-10-11"
+  expected_answer: "L'accordo bonario si applica quando le riserve possono far variare l'importo dell'opera tra il 5 e il 15 per cento del contratto e riguarda tutte le riserve iscritte fino all'avvio del procedimento. La proposta, formulata dall'esperto o dal RUP, si intende conclusa come accordo se accettata dalle parti entro quarantacinque giorni dal ricevimento; l'accordo ha natura di transazione."
+  expected_refs: ["210/1", "210/2", "210/6"]
+  source_excerpt: "Se la proposta e' accettata dalle parti entro quarantacinque giorni dal suo ricevimento, l'accordo bonario e' concluso ed e' redatto verbale sottoscritto dalle parti. L'accordo ha natura di transazione."
+  difficulty: medium
+  status: bozza
+  notes: ""
+
+- id: Q081
+  question: "Per un appalto di lavori da 2 milioni di euro chi posso nominare RUP e quanta esperienza deve avere?"
+  kind: multi
+  category: rup
+  vigenza: "2026-10-11"
+  expected_answer: "Il RUP è nominato tra i dipendenti, anche a tempo determinato, della stazione appaltante con i requisiti dell'allegato I.2 (o, se manca personale con quei requisiti, tra i dipendenti di altre amministrazioni). Per i lavori deve essere un tecnico abilitato con almeno tre anni di esperienza in attività analoghe per i contratti tra 1 milione e la soglia europea; se non è abilitato, deve avere almeno cinque anni di esperienza nel settore."
+  expected_refs: ["15/2", "all:I.2/4/1", "all:I.2/4/2"]
+  source_excerpt: "b) di almeno tre anni per i contratti di importo pari o superiore a 1.000.000 di euro e inferiore alla soglia di cui all'articolo 14 del codice;"
+  difficulty: hard
+  status: bozza
+  notes: "Allegato I.2, art. 4, comma 1, lett. b) and comma 2. Added comma 2: without a professional licence the minimum is five years, not three. Comma 4 (lavori particolarmente complessi) is not assumed."
