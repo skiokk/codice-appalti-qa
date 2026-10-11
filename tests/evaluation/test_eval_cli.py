@@ -60,7 +60,9 @@ def coverage(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, set[date]]]:
     """Every version has an embedding; records the (model, days) of each check."""
     calls: list[tuple[str, set[date]]] = []
 
-    def embedding_coverage(conn: object, model: str, days: Iterable[date]) -> tuple[int, int]:
+    def embedding_coverage(
+        conn: object, model: str, days: Iterable[date], *, passages: bool = False
+    ) -> tuple[int, int]:
         calls.append((model, set(days)))
         return 2811, 2811
 
@@ -69,7 +71,9 @@ def coverage(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, set[date]]]:
 
 
 def _set_coverage(monkeypatch: pytest.MonkeyPatch, embedded: int, total: int) -> None:
-    monkeypatch.setattr(eval_cli, "embedding_coverage", lambda conn, model, days: (embedded, total))
+    monkeypatch.setattr(
+        eval_cli, "embedding_coverage", lambda conn, model, days, **_: (embedded, total)
+    )
 
 
 def test_validate(dataset_path: Path, capsys: pytest.CaptureFixture) -> None:

@@ -10,19 +10,21 @@ from collections.abc import Iterator, Sequence
 from contextlib import contextmanager, nullcontext
 from datetime import date
 from pathlib import Path
-from typing import Any, NamedTuple, get_args
+from typing import TYPE_CHECKING, Any, NamedTuple, cast, get_args
 
 import psycopg
 
 from appalti_qa.config import ProviderName, RetrievalMode, Settings, get_settings
 from appalti_qa.evaluation.dataset import (
     DEFAULT_DATASET,
+    SPLITS,
     DatasetError,
     EvalItem,
     embedding_coverage,
     load_dataset,
     referenced_texts,
     select_items,
+    split_items,
     validate_dataset,
 )
 from appalti_qa.evaluation.judge import get_judge
@@ -40,15 +42,52 @@ from appalti_qa.evaluation.runner import (
     run_answer_eval,
     run_retrieval_eval,
 )
+from appalti_qa.evaluation.sweep import Variant, default_grid, render_sweep, run_sweep
 from appalti_qa.evaluation.xlsx import export_xlsx, review_import
 from appalti_qa.models import Answer, Citation, Hit
+
+if TYPE_CHECKING:
+    from appalti_qa.retrieval import Embedder
 
 MODES: tuple[str, ...] = get_args(RetrievalMode)
 PROVIDERS: tuple[str, ...] = get_args(ProviderName)
 EMBEDDING_MODES: frozenset[str] = frozenset({"semantic", "hybrid"})
+DEFAULT_SWEEP_DIR = DEFAULT_RESULTS_DIR / "sweeps"
+# The settings that shape retrieval, recorded in the configuration of every retrieval run.
+RETRIEVAL_SETTINGS: tuple[str, ...] = (
+    "semantic_granularity",
+    "hubness_weight",
+    "lexical_weight",
+    "fusion_depth",
+    "rrf_k",
+)
 # Share of the searchable versions that must carry an embedding from the configured model before
 # results of the modes that use embeddings can be published.
 MIN_EMBEDDING_COVERAGE = 0.99
+
+
+class _CachedQueries:
+    """An embedder that embeds each query once: a sweep searches the same questions many times."""
+
+    def __init__(self, embedder: Embedder) -> None:
+        self._embedder = embedder
+        self._cache: dict[str, Any] = {}
+        self.model_name = embedder.model_name
+
+    @property
+    def dim(self) -> int:
+        return self._embedder.dim
+
+    def embed_queries(self, texts: Sequence[str]) -> Any:
+        import numpy as np
+
+        missing = [text for text in dict.fromkeys(texts) if text not in self._cache]
+        if missing:
+            self._cache.update(zip(missing, self._embedder.embed_queries(missing), strict=True))
+        return np.stack([self._cache[text] for text in texts])
+
+    def embed_passages(self, texts: Sequence[str]) -> Any:
+        return self._embedder.embed_passages(texts)
 
 
 class AnswerBackend(NamedTuple):
@@ -73,13 +112,18 @@ def _open_db() -> Iterator[psycopg.Connection]:
 
 
 def _search_retriever(
-    mode: RetrievalMode, conn: psycopg.Connection, settings: Settings
+    mode: RetrievalMode,
+    conn: psycopg.Connection,
+    settings: Settings,
+    embedder: Embedder | None = None,
 ) -> Retriever:
     from appalti_qa.retrieval import search
 
     def retrieve(question: str, at_date: date, k: int) -> list[Hit]:
         try:
-            return search(question, at_date, k, mode, conn=conn, settings=settings)
+            return search(
+                question, at_date, k, mode, conn=conn, settings=settings, embedder=embedder
+            )
         finally:
             conn.rollback()  # end the read-only transaction (and any SET LOCAL) per query
 
@@ -138,7 +182,10 @@ def _k_list(text: str) -> tuple[int, ...]:
 def _select(args: argparse.Namespace) -> tuple[list[EvalItem], dict[str, Any]] | None:
     items = load_dataset(args.dataset)
     selected = select_items(
-        items, include_drafts=args.include_drafts, ids=args.ids, limit=args.limit
+        split_items(items, getattr(args, "split", "all")),
+        include_drafts=args.include_drafts,
+        ids=args.ids,
+        limit=args.limit,
     )
     if not selected:
         hint = (
@@ -147,6 +194,9 @@ def _select(args: argparse.Namespace) -> tuple[list[EvalItem], dict[str, Any]] |
         print(f"No questions selected{hint}.", file=sys.stderr)
         return None
     summary = dataset_summary(args.dataset, items, selected, include_drafts=args.include_drafts)
+    split = getattr(args, "split", "all")
+    if split != "all":
+        summary["split"] = split
     return selected, summary
 
 
@@ -235,6 +285,9 @@ def _cmd_validate(args: argparse.Namespace) -> int:
 
 
 def _cmd_retrieval(args: argparse.Namespace) -> int:
+    if args.publish and args.split != "all":
+        print("Refusing to publish a split: published runs cover every question.", file=sys.stderr)
+        return 2
     selection = _select(args)
     if selection is None:
         return 1
@@ -250,6 +303,8 @@ def _cmd_retrieval(args: argparse.Namespace) -> int:
         "k_values": list(args.k),
         "embedding_model": settings.embedding_model,
         "judge": None,
+        "split": args.split,
+        **{name: getattr(settings, name) for name in RETRIEVAL_SETTINGS},
     }
     with _open_db() as conn:
         refusal = _embedding_refusal(settings, modes, items, conn) if args.publish else None
@@ -261,6 +316,52 @@ def _cmd_retrieval(args: argparse.Namespace) -> int:
             items, retrievers, primary=primary, dataset=summary, config=config, k_values=args.k
         )
     return _write(results, args.out, publish=args.publish)
+
+
+def _cmd_sweep(args: argparse.Namespace) -> int:
+    selection = _select(args)
+    if selection is None:
+        return 1
+    items, summary = selection
+    settings = get_settings()
+    grid = default_grid()
+    variants = [v for v in grid if v.name in set(args.only)] if args.only else grid
+    unknown = sorted(set(args.only or ()) - {v.name for v in grid})
+    if unknown:
+        print(f"Unknown variants: {unknown}", file=sys.stderr)
+        return 2
+    chosen = None
+    if args.chosen_from:
+        chosen = json.loads(args.chosen_from.read_text(encoding="utf-8")).get("chosen")
+    from appalti_qa.retrieval import get_embedder
+
+    embedder = _CachedQueries(get_embedder(settings))
+    config = {"embedding_model": settings.embedding_model, "k_values": list(args.k)}
+    with _open_db() as conn:
+
+        def make_retriever(variant: Variant) -> Retriever:
+            tuned = settings.model_copy(update=dict(variant.params))
+            return _search_retriever(cast(RetrievalMode, variant.mode), conn, tuned, embedder)
+
+        results = run_sweep(
+            items,
+            variants,
+            make_retriever,
+            split=args.split,
+            dataset=summary,
+            config=config,
+            k_values=args.k,
+        )
+    if chosen:
+        results["chosen_on_dev"] = chosen
+    args.out.mkdir(parents=True, exist_ok=True)
+    path = args.out / f"{results['run_id']}.json"
+    path.write_text(json.dumps(results, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    report = render_sweep(results, chosen=chosen)
+    path.with_suffix(".md").write_text(report, encoding="utf-8")
+    print(report, end="")
+    print(f"Results: {path}")
+    return 0
 
 
 def _publish_refusal(provider: str, judge_provider: str) -> str | None:
@@ -300,13 +401,16 @@ def _embedding_refusal(
             " embeddings of the corpus and hybrid search is in effect lexical. Set EMBEDDING_MODEL"
             " to the model the corpus was embedded with, or run without --publish."
         )
-    embedded, total = embedding_coverage(conn, model, {item.vigenza for item in items})
+    passages = settings.semantic_granularity == "passage"
+    days = {item.vigenza for item in items}
+    embedded, total = embedding_coverage(conn, model, days, passages=passages)
     if total and embedded / total >= MIN_EMBEDDING_COVERAGE:
         return None
     share = f" ({embedded / total:.1%})" if total else ""
     return (
         f"Refusing to publish: {embedded:,} of the {total:,} versions in force on the evaluated"
-        f" dates{share} have an embedding from {model}; at least {MIN_EMBEDDING_COVERAGE:.0%}"
+        f" dates{share} have {'passage embeddings' if passages else 'an embedding'} from {model};"
+        " at least {MIN_EMBEDDING_COVERAGE:.0%}"
         " are needed, otherwise semantic search misses the rest and hybrid search degrades to"
         " lexical. Run `appalti-qa embed` (or set EMBEDDING_MODEL to the model the corpus was"
         " embedded with), or run without --publish."
@@ -444,6 +548,15 @@ def _add_selection(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--out", type=Path, default=DEFAULT_RESULTS_DIR, help="results directory")
 
 
+def _add_split(parser: argparse.ArgumentParser, default: str = "all") -> None:
+    parser.add_argument(
+        "--split",
+        choices=SPLITS,
+        default=default,
+        help="dev = questions with refs and an odd id, test = even id (default: %(default)s)",
+    )
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="appalti-qa eval", description="Evaluation of retrieval and answers."
@@ -462,6 +575,7 @@ def build_parser() -> argparse.ArgumentParser:
     _add_selection(p)
     p.add_argument("--mode", action="append", choices=MODES, help="repeatable; default: all")
     p.add_argument("--k", type=_k_list, default=DEFAULT_K_VALUES, help="cutoffs, e.g. 1,3,5,10")
+    _add_split(p)
     p.add_argument(
         "--publish",
         action="store_true",
@@ -469,6 +583,25 @@ def build_parser() -> argparse.ArgumentParser:
         " answer run; refused when semantic search lacks embeddings",
     )
     p.set_defaults(handler=_cmd_retrieval)
+
+    p = sub.add_parser(
+        "sweep",
+        help="compare the retrieval variants on a split (dev: also apply the selection rule)",
+    )
+    _add_selection(p)
+    p.set_defaults(out=DEFAULT_SWEEP_DIR)
+    p.add_argument("--k", type=_k_list, default=DEFAULT_K_VALUES, help="cutoffs, e.g. 1,3,5,10")
+    _add_split(p, default="dev")
+    p.add_argument(
+        "--only", action="append", metavar="VARIANT", help="repeatable; default: the whole grid"
+    )
+    p.add_argument(
+        "--chosen-from",
+        type=Path,
+        metavar="SWEEP.json",
+        help="a dev sweep whose chosen variant is compared with the baseline",
+    )
+    p.set_defaults(handler=_cmd_sweep)
 
     p = sub.add_parser(
         "answers",

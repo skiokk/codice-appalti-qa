@@ -11,6 +11,8 @@ from appalti_qa.evaluation.dataset import (
     load_dataset,
     referenced_texts,
     select_items,
+    split_items,
+    split_of,
     validate_dataset,
 )
 
@@ -187,3 +189,30 @@ def test_embedding_coverage(seeded_conn: psycopg.Connection) -> None:
         " WHERE u.id = v.unit_id AND u.key = '225-bis'"
     )
     assert embedding_coverage(seeded_conn, "m", [jan_2025, jan_2025]) == (2, 3)  # repealed: out
+
+
+def test_split_is_by_id_parity_among_questions_with_refs(items: list[EvalItem]) -> None:
+    # Q001 (refs, odd) dev; Q002 and Q004 (refs, even) test; Q003 has no refs: in neither.
+    assert [split_of(item) for item in items] == ["dev", "test", None, "test"]
+    assert [item.id for item in split_items(items, "dev")] == ["Q001"]
+    assert [item.id for item in split_items(items, "test")] == ["Q002", "Q004"]
+    assert split_items(items, "all") == items
+    with pytest.raises(ValueError):
+        split_items(items, "train")  # type: ignore[arg-type]
+
+
+def test_split_is_deterministic_and_disjoint() -> None:
+    items = [_item(id=f"Q{n:03d}") for n in range(1, 30)]
+    shuffled = list(reversed(items))
+    dev, test = split_items(items, "dev"), split_items(items, "test")
+    assert {i.id for i in split_items(shuffled, "dev")} == {i.id for i in dev}
+    assert not {i.id for i in dev} & {i.id for i in test}
+    assert len(dev) + len(test) == len(items)
+    assert split_of(_item(id="Q1001")) == "dev"  # parity of the number, not of a digit
+
+
+def test_split_of_the_published_dataset() -> None:
+    dataset = load_dataset(Path(__file__).resolve().parents[2] / "eval" / "dataset.yaml")
+    dev, test = split_items(dataset, "dev"), split_items(dataset, "test")
+    assert (len(dev), len(test)) == (37, 36)
+    assert all(int(item.id[1:]) % 2 == 1 and item.expected_refs for item in dev)

@@ -105,6 +105,7 @@ Observed in the corpus:
 ProviderName = Literal["fake", "anthropic", "groq"]
 Effort = Literal["low", "medium", "high", "xhigh", "max"]
 RetrievalMode = Literal["lexical", "semantic", "hybrid"]
+SemanticGranularity = Literal["unit", "passage"]
 
 class Settings(BaseSettings):            # env vars / .env, case-insensitive, extra ignored
     database_url: str = "postgresql://appalti:appalti@localhost:5433/appalti"
@@ -119,6 +120,10 @@ class Settings(BaseSettings):            # env vars / .env, case-insensitive, ex
     anthropic_api_key: SecretStr | None = None; groq_api_key: SecretStr | None = None
     judge_provider: ProviderName = "fake"; judge_model: str = "claude-opus-5-5"
     default_top_k: int = 8; retrieval_mode: RetrievalMode = "hybrid"; rrf_k: int = 60
+    fusion_depth: int = 4                  # hybrid fuses two lists of fusion_depth * k
+    lexical_weight: float = 1.0            # weight of the lexical list in RRF
+    semantic_granularity: SemanticGranularity = "unit"   # "passage": best sub-passage (max-sim)
+    hubness_weight: float = 0.0            # passage score -= hubness_weight * hub_score
     min_relevance_score: float = 0.0
     max_question_chars: int = 500
     rate_limit_per_ip_per_hour: int = 20; rate_limit_global_per_day: int = 500
@@ -182,6 +187,12 @@ docstring says so (writers like `load_corpus` and `embed_missing` commit).
   - `tsv` is generated from the row's heading (weight A) and text (weight B), `italian` config,
     GIN index, so a later heading never changes what an earlier date matches.
   - `embedding` has an HNSW `vector_cosine_ops` index; `embedding_model` records the model name.
+- `unit_passages(id, version_id → unit_versions ON DELETE CASCADE, ordinal, text, text_hash, scheme, embedding vector(DIM), embedding_model, hub_score)`,
+  unique `(version_id, ordinal)`, HNSW `vector_cosine_ops` index on `embedding`. The sub-passages
+  of each version (section 5): ordinal 0 is the whole unit, `text` the exact string embedded,
+  `scheme` the splitting rules that produced it (`passages.PASSAGE_SCHEME`), `hub_score` the
+  mean similarity to the nearest probe queries. Written by `appalti-qa embed`; `load_corpus`
+  keeps them across re-ingestion like the version embeddings.
 - `qa_log(id, created_at, client_hash, question, at_date, provider, model, abstained, cited_keys text[], input_tokens, output_tokens, latency_ms, error)`
   for the web app (usage and cost tracking; rate limits are kept in process and reset on
   restart). Never store raw IPs.
@@ -399,7 +410,8 @@ def load_corpus(corpus: VersionedCorpus, conn: psycopg.Connection) -> LoadStats 
 
 `load_corpus` replaces the act's data in one transaction and is idempotent. It must preserve
 existing embeddings: before replacing, keep `(text_hash, heading) -> (embedding, embedding_model)`
-and restore them on matching new rows.
+and restore them on matching new rows, and likewise the passages of each `(text_hash, heading)`
+(`unit_passages` rows with their embeddings and hub scores).
 
 ```python
 # appalti_qa/ingest/download.py
@@ -436,7 +448,8 @@ real `data/raw/akn` when present.
 
 Package `appalti_qa.retrieval`; exports `Embedder`, `SentenceTransformerEmbedder`, `FakeEmbedder`,
 `get_embedder`, `passage_text`, `embed_missing`, `cli_embed`, `search`, `lookup`, `history`,
-`extract_refs`, `normattiva_url`, `available_range`.
+`extract_refs`, `normattiva_url`, `available_range`. Passage-level embeddings live in
+`appalti_qa.retrieval.passages`.
 
 ```python
 # appalti_qa/retrieval/embedding.py
@@ -466,6 +479,27 @@ def cli_embed(args: argparse.Namespace) -> int
 every matching row. The passage is `passage_text(heading, text)` = heading line + text.
 
 ```python
+# appalti_qa/retrieval/passages.py
+PASSAGE_SCHEME = "v1"; WINDOW_CHARS = 1000; WINDOW_OVERLAP = 200
+SPLIT_MIN_CHARS = 1200; INTRO_MAX_CHARS = 500; HUB_NEIGHBOURS = 10
+def split_passages(heading: str | None, text: str) -> list[str]   # whole unit first, no duplicates
+def windows(text: str, size: int = WINDOW_CHARS, overlap: int = WINDOW_OVERLAP) -> list[str]
+def build_passages(conn) -> int          # split versions without passages (or of another scheme); commits
+def embed_passages(conn, embedder, *, batch_size=32, limit=None, progress=None) -> int
+                                         # distinct texts embedded; ordinal 0 reuses the unit vector
+def max_sim(scores: Sequence[tuple[int, float]]) -> dict[int, float]   # version -> best passage
+def hub_scores(passages: np.ndarray, probes: np.ndarray, k: int = HUB_NEIGHBOURS) -> np.ndarray
+def update_hub_scores(conn, embedder) -> int   # probes: the corpus headings, embedded as queries
+```
+
+`split_passages`: a paragraph with two or more lettere gives its intro alone and one passage per
+lettera (heading + intro clipped to `INTRO_MAX_CHARS` + the lettera with its nested lines); other
+text longer than `SPLIT_MIN_CHARS` gives windows of at most `WINDOW_CHARS` cut at line or
+sentence boundaries, consecutive windows sharing at most `WINDOW_OVERLAP` characters, each
+prefixed with the heading. `cli_embed` runs `embed_missing`, `build_passages`, `embed_passages`
+and, when anything changed, `update_hub_scores`.
+
+```python
 # appalti_qa/retrieval/search.py
 def search(query: str, at_date: date, k: int = 8, mode: RetrievalMode = "hybrid", *,
            conn: psycopg.Connection | None = None, embedder: Embedder | None = None,
@@ -489,9 +523,13 @@ def normattiva_url(unit_key: str, at_date: date) -> str
   containing a negation are kept as written.
 - `semantic`: cosine similarity (`1 - (embedding <=> q)`) with the query embedding; use
   `SET LOCAL hnsw.ef_search` / `hnsw.iterative_scan` (pgvector 0.8) so the date filter does not
-  starve results; rows without embeddings are ignored.
-- `hybrid`: reciprocal rank fusion of the lexical and semantic lists (each `4*k` long) with
-  `settings.rrf_k`; units explicitly referenced in the query (`extract_refs`) are placed first
+  starve results; rows without embeddings are ignored. With `semantic_granularity = "passage"`,
+  the nearest `PASSAGE_POOL * limit` passages of the versions in force are read (HNSW on
+  `unit_passages`) and each version scores its best passage (`max_sim`), less
+  `hubness_weight * hub_score` of that passage; without passage embeddings for the model it falls
+  back to whole units with a warning.
+- `hybrid`: reciprocal rank fusion of the lexical and semantic lists (each `fusion_depth * k`
+  long) with `settings.rrf_k`, the lexical list weighted by `settings.lexical_weight`; units explicitly referenced in the query (`extract_refs`) are placed first
   (score `1.0` + their fusion score). Without embeddings for the configured model, semantic search
   logs a warning and returns `[]` without loading the model, so hybrid degrades to lexical.
 - `Hit.score` is the mode's score (higher is better); ties broken by `units.ordinal`.
@@ -672,7 +710,16 @@ class EvalItem(BaseModel):      # fields exactly as above; vigenza: date; id mat
 class DatasetError(ValueError): problems: list[str]
 def load_dataset(path: Path = Path("eval/dataset.yaml")) -> list[EvalItem]   # raises DatasetError
 def validate_dataset(items: Sequence[EvalItem], *, conn: psycopg.Connection | None = None) -> list[str]
+Split = Literal["all", "dev", "test"]
+def split_of(item: EvalItem) -> Literal["dev", "test"] | None   # odd id: dev, even: test; no refs: None
+def split_items(items, split: Split) -> list[EvalItem]
 ```
+
+The split is fixed (decision 8 in `docs/decisions.md`): retrieval parameters are chosen on the
+`dev` questions only and reported on `test` apart. `appalti_qa.evaluation.sweep` holds the grid
+of variants (`default_grid`), the selection rule (`choose`, stated in `SELECTION_RULE`) and the
+adoption rule (`beats`); `eval sweep` writes `eval/results/sweeps/<timestamp>_sweep_<split>.json`
+and `.md`. `eval retrieval --publish` is refused with a split other than `all`.
 
 Static checks: unique ids, valid keys (`keys.is_valid_key`), `unanswerable` ⇔ empty refs,
 `multi` has 2+ refs, excerpt length. With `conn`: each ref matches a unit in force at `vigenza`,
@@ -713,7 +760,8 @@ def render_report(results: dict) -> str                             # markdown
 def cli_main(argv: Sequence[str] | None = None) -> int
 ```
 
-CLI (`appalti-qa eval <sub>`): `validate [--db]`, `retrieval [--mode] [--k] [--publish]`,
+CLI (`appalti-qa eval <sub>`): `validate [--db]`, `retrieval [--mode] [--k] [--split] [--publish]`,
+`sweep [--split dev|test|all] [--only VARIANT] [--chosen-from SWEEP.json] [--k]`,
 `answers` (alias `run`) `[--provider] [--model] [--mode] [--k] [--limit] [--ids Q001,...]
 [--publish]`, `report RESULTS.json`, `export-xlsx OUT.xlsx [--with-answers RESULTS.json]`,
 `import-xlsx IN.xlsx [--db] [--dry-run]`, `compare RESULTS.json...`. Runs use only `verificata` and

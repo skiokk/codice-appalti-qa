@@ -140,3 +140,41 @@ per change date, not per comma: when two acts take effect on the same day, or an
 vacatio legis takes effect after another act published later, the latest-published act is
 credited and the doubt is logged; crediting individual commi would need Normattiva's per-article
 update notes.
+
+## 8. Retrieval is tuned on a fixed development split and reported on a held-out test split
+
+**Context.** With e5-base, semantic search is weak on long, list-structured commi: one vector
+for a comma with five lettere, or for an allegato table cut at 512 tokens, averages its parts.
+For "Fino a che importo posso affidare direttamente un servizio?" the exact cosine rank of 50/1
+(2,135 characters, lettere a-e) is 61; similarities are compressed (0.82-0.86) and a few passages
+(140-bis/2, 49/6, all. II.4/2/1, the II.12 tables) sit near every query. Lexical search finds 50/1
+at rank 2-4, but reciprocal rank fusion with the noisy semantic list pushes it out of the top 10.
+Changes meant to fix this have parameters, and with 73 questions it is easy to pick the ones
+that happen to suit them.
+
+**Decision.** The method is fixed before any number is looked at.
+
+1. *Split.* Questions with expected references and an odd numeric id are the development set
+   (37), those with an even id the test set (36) (`evaluation.dataset.split_of`). The rule
+   depends only on the id, so it is deterministic and independent of the results.
+2. *Variants* (`evaluation.sweep.default_grid`), each with every parameter explicit: semantic
+   granularity `unit` (one vector per version, as before) or `passage` (max-sim over the
+   sub-passages of decision-free splitting rules: intro and one passage per lettera, windows of
+   about 1,000 characters with up to 200 overlapping; these sizes come from the problem, not from
+   tuning, since each change needs a re-embedding); for passages, a hubness correction weight
+   λ in {0, 0.5, 1} (score − λ · mean similarity to the 10 nearest probe queries, the corpus
+   headings embedded as queries; λ = 0.5 ranks like CSLS); lexical weight w in RRF in {0.5, 1,
+   1.5, 2, 3}; fusion depth (each list `d * k` long) in {2, 4, 8}; `RRF_K` stays 60. 60 hybrid
+   variants, plus lexical and semantic-only rows for reference.
+3. *Selection rule*, applied on the development set only (`choose`): the highest comma-level
+   MRR among hybrid variants; variants within 0.01 of it are separated by recall@5, those within
+   0.01 of the best recall@5 by the fewest parameters changed from the baseline, then by name.
+4. *Adoption rule* (`beats`): the chosen variant becomes the default only if, on the test set,
+   its MRR is higher than the baseline's (`hybrid unit w1 d4`) and its recall@5 is not lower.
+   Otherwise the baseline stays the default and the result is reported as negative.
+
+**Consequences.** `appalti-qa eval sweep --all --split dev` and `--split test` reproduce the
+comparison from the database; results are kept in `eval/results/sweeps/`. The test set is small
+(36 questions; one question moving by one rank changes MRR by up to 0.014), and the six temporal
+pairs ask the same question at two dates, so each pair has one question in each split: the test
+set is not fully independent of the development set for them.

@@ -124,6 +124,29 @@ def select_items(
     return selected[:limit] if limit is not None else selected
 
 
+# Fixed split for tuning retrieval, chosen before any tuning (decision 8 in docs/decisions.md):
+# questions with expected refs and an odd numeric id are the development set, on which every
+# parameter is chosen; those with an even id are the test set, reported apart and never tuned on.
+Split = Literal["all", "dev", "test"]
+SPLITS: tuple[str, ...] = ("all", "dev", "test")
+
+
+def split_of(item: EvalItem) -> Literal["dev", "test"] | None:
+    """'dev' (odd id) or 'test' (even id) for a question with refs; None for the others."""
+    if not item.expected_refs:
+        return None
+    return "dev" if int(item.id[1:]) % 2 else "test"
+
+
+def split_items(items: Iterable[EvalItem], split: Split) -> list[EvalItem]:
+    """The questions of a split, in file order; "all" keeps every question."""
+    if split not in SPLITS:
+        raise ValueError(f"unknown split: {split!r}")
+    if split == "all":
+        return list(items)
+    return [item for item in items if split_of(item) == split]
+
+
 # --- consistency checks -----------------------------------------------------------------------
 
 
@@ -169,7 +192,11 @@ _IN_FORCE_SQL = """
 
 _EMBEDDED_SQL = """
     SELECT count(*),
-        count(*) FILTER (WHERE v.embedding IS NOT NULL AND v.embedding_model = %(model)s)
+        count(*) FILTER (WHERE v.embedding IS NOT NULL AND v.embedding_model = %(model)s
+            AND (NOT %(passages)s OR (
+                EXISTS (SELECT 1 FROM unit_passages p WHERE p.version_id = v.id)
+                AND NOT EXISTS (SELECT 1 FROM unit_passages p WHERE p.version_id = v.id
+                    AND p.embedding_model IS DISTINCT FROM %(model)s))))
     FROM unit_versions v
     WHERE NOT v.repealed AND EXISTS (
         SELECT 1 FROM unnest(%(days)s::date[]) AS d(day)
@@ -178,14 +205,16 @@ _EMBEDDED_SQL = """
 
 
 def embedding_coverage(
-    conn: psycopg.Connection, model: str, days: Iterable[date]
+    conn: psycopg.Connection, model: str, days: Iterable[date], *, passages: bool = False
 ) -> tuple[int, int]:
     """(embedded, total) over the versions semantic search can return on any of `days`.
 
     `total` counts the versions in force and not repealed on at least one of the days;
-    `embedded`, those of them with an embedding made by `model`.
+    `embedded`, those of them with an embedding made by `model` and, with `passages`, with
+    passages all embedded by `model` too.
     """
-    row = conn.execute(_EMBEDDED_SQL, {"model": model, "days": sorted(set(days))}).fetchone()
+    params = {"model": model, "days": sorted(set(days)), "passages": passages}
+    row = conn.execute(_EMBEDDED_SQL, params).fetchone()
     return (int(row[1]), int(row[0])) if row else (0, 0)
 
 
