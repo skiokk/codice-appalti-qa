@@ -1,0 +1,58 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "appalti-qa"
+version = "0.1.0"
+description = "Question answering over the Italian Public Procurement Code (D.Lgs. 36/2023) with point-in-time citations and measured evaluation."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Carmine Alessandro Di Matteo" }]
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.143",
+    "uvicorn[standard]>=0.54",
+    "jinja2>=3.1.6",
+    "python-multipart>=0.0.32",
+    "httpx>=0.28.1",
+    "pydantic>=2.14",
+    "pydantic-settings>=2.15",
+    "psycopg[binary,pool]>=3.3",
+    "pgvector>=0.5.1",
+    "lxml>=6.1",
+    "sentence-transformers>=6.1",
+    "anthropic>=1.13",
+    "groq>=1.7",
+    "pyyaml>=6.0.3",
+    "openpyxl>=3.1.5",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=9.1", "ruff>=0.17"]
+
+[project.scripts]
+appalti-qa = "appalti_qa.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+appalti_qa = ["web/templates/**/*", "web/static/**/*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers --import-mode=importlib"
+markers = [
+    "db: needs the PostgreSQL test database (skipped when unreachable)",
+    "slow: loads real models or parses the full corpus",
+]
