@@ -1,0 +1,55 @@
+{# Form fields of the question form. Rendered again (out of band) after each htmx request so that
+   error messages and their aria-describedby links stay in sync with the server's validation. #}
+{% macro question_fields(form, max_chars, oob=false) %}
+<div id="campi-domanda"{% if oob %} hx-swap-oob="true"{% endif %}>
+  {% set error = form.errors.get("question") %}
+  <div class="campo{% if error %} campo-errore{% endif %}">
+    <label for="domanda">La tua domanda (obbligatoria)</label>
+    <p id="domanda-aiuto" class="campo-aiuto">Scrivi in italiano, anche con parole tue. Puoi indicare un articolo, ad esempio «art. 50, comma 1».</p>
+    {% if error %}
+    <p id="domanda-errore" class="campo-messaggio-errore"><strong>Errore:</strong> {{ error }}</p>
+    {% endif %}
+    <textarea id="domanda" name="domanda" class="form-control" rows="4" maxlength="{{ max_chars }}" required data-contatore="domanda-contatore" aria-describedby="domanda-aiuto domanda-contatore{% if error %} domanda-errore{% endif %}"{% if error %} aria-invalid="true"{% endif %}>{{ form.question }}</textarea>
+    <p id="domanda-contatore" class="campo-aiuto mt-1 mb-0">Massimo {{ max_chars }} caratteri.</p>
+    <p id="domanda-contatore-annuncio" class="visually-hidden" aria-live="polite"></p>
+  </div>
+  {% set date_error = form.errors.get("date") %}
+  <div class="campo{% if date_error %} campo-errore{% endif %}">
+    <label for="data">Testo vigente al</label>
+    <p id="data-aiuto" class="campo-aiuto">Il Codice è stato modificato più volte: la risposta si basa sul testo in vigore in questa data (formato GG/MM/AAAA).{% if form.min_date %} Testi disponibili dal {{ form.min_date|data }}.{% endif %}</p>
+    {% if date_error %}
+    <p id="data-errore" class="campo-messaggio-errore"><strong>Errore:</strong> {{ date_error }}</p>
+    {% endif %}
+    <input type="date" id="data" name="data" class="form-control" value="{{ form.date }}"{% if form.min_date %} min="{{ form.min_date.isoformat() }}"{% endif %} max="{{ form.max_date.isoformat() }}" aria-describedby="data-aiuto{% if date_error %} data-errore{% endif %}"{% if date_error %} aria-invalid="true"{% endif %}>
+  </div>
+</div>
+{% endmacro %}
+
+{% macro amendments(events) %}
+{% if events %} Modificato da: {% for event in events %}{{ event.label }} ({{ event.date|data }}){% if not loop.last %}; {% endif %}{% endfor %}.{% endif %}
+{% endmacro %}
+
+{# One source of an answer: label, validity, amendments, cited spans, full text and links. #}
+{% macro source_item(source, day) %}
+{% set hit = source.hit %}
+<li id="fonte-{{ source.number }}" value="{{ source.number }}" class="fonte">
+  <h4 class="h6 mb-1"><span class="fonte-numero">[{{ source.number }}]</span> {{ hit.label }}{% if hit.heading %} – {{ hit.heading }}{% endif %}</h4>
+  <p class="fonte-vigenza mb-2">{{ validity(hit.valid_from, hit.valid_to) }}.{{ amendments(hit.modified_by) }}</p>
+  {% if source.passages %}
+  <details>
+    <summary>Testo citato<span class="visually-hidden"> da {{ hit.label }}</span></summary>
+    {% for passage in source.passages %}
+    <blockquote class="fonte-citazione">{{ passage }}</blockquote>
+    {% endfor %}
+  </details>
+  {% endif %}
+  <details>
+    <summary>Testo completo vigente al {{ day|data }}<span class="visually-hidden"> di {{ hit.label }}</span></summary>
+    <div class="testo-norma">{{ hit.text }}</div>
+  </details>
+  <ul class="fonte-link">
+    <li><a href="{{ norma_path(hit.unit_key, day) }}">Testo e versioni nel tempo<span class="visually-hidden"> di {{ hit.label }}</span></a></li>
+    <li><a href="{{ hit.normattiva_url }}">Testo ufficiale su Normattiva<span class="visually-hidden"> di {{ hit.label }}</span></a></li>
+  </ul>
+</li>
+{% endmacro %}

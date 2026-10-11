@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% from "macros.html" import question_fields %}
+{% block title %}{% if form.errors %}Errore: {% endif %}Chiedi al Codice dei contratti pubblici{% endblock %}
+{% block content %}
+<div class="container py-4 py-lg-5">
+  <div class="row g-5">
+    <div class="col-lg-8">
+      <h1>Chiedi al Codice dei contratti pubblici</h1>
+      <p class="lead">Fai una domanda sul decreto legislativo 31 marzo 2023, n. 36. La risposta indica gli articoli e i commi su cui si basa, nel testo in vigore alla data che scegli.</p>
+
+      <form id="modulo-domanda" method="post" action="/chiedi" novalidate
+            hx-post="/chiedi" hx-target="#esito" hx-swap="innerHTML"
+            hx-indicator="#attesa" hx-disabled-elt="find button[type='submit']">
+        {{ question_fields(form, max_chars) }}
+        <div class="d-flex flex-wrap align-items-center gap-4">
+          <button type="submit" class="btn btn-primary">Chiedi</button>
+          <div id="attesa" class="attesa htmx-indicator">
+            <span class="progress-spinner" aria-hidden="true"></span>
+            <span>Ricerca delle fonti e preparazione della risposta in corso…</span>
+          </div>
+        </div>
+        <p id="stato-richiesta" class="visually-hidden" role="status"></p>
+      </form>
+
+      <section id="esito" class="mt-5" aria-live="polite" aria-label="Esito della domanda">
+        {% include "_esito.html" %}
+      </section>
+    </div>
+
+    <aside class="col-lg-4" aria-labelledby="titolo-esempi">
+      <h2 id="titolo-esempi" class="h4">Esempi di domande</h2>
+      <ul class="esempi">
+        {% for example in examples %}
+        <li><a href="/?domanda={{ example|urlencode }}">{{ example }}</a></li>
+        {% endfor %}
+      </ul>
+      <h2 class="h4 mt-4">Prima di usare le risposte</h2>
+      <p>Le risposte sono generate automaticamente a partire dal testo del Codice e possono contenere errori o omissioni. Hanno valore informativo e non costituiscono parere legale: verifica sempre le fonti citate e il testo ufficiale su <a href="https://www.normattiva.it/">Normattiva</a>.</p>
+      <p><a href="/informazioni">Come funziona e quali sono i limiti</a></p>
+    </aside>
+  </div>
+</div>
+{% endblock %}

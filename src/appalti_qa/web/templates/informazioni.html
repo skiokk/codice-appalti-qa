@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Come funziona{% endblock %}
+{% block content %}
+<div class="container py-4 py-lg-5">
+  <div class="row">
+    <div class="col-lg-8">
+      <h1>Come funziona</h1>
+      <p class="lead">Codice Appalti QA risponde a domande sul Codice dei contratti pubblici citando gli articoli e i commi da cui ricava la risposta, nel testo in vigore alla data indicata.</p>
+
+      <div class="alert alert-warning" id="avvertenze">
+        <h2 class="h5">Non è un parere legale</h2>
+        <p class="mb-0">Le risposte sono generate automaticamente e hanno solo valore informativo. Possono essere incomplete o errate e non sostituiscono la consulenza di un professionista. Fa fede il testo ufficiale pubblicato su <a href="https://www.normattiva.it/">Normattiva</a> e nella Gazzetta Ufficiale.</p>
+      </div>
+
+      <section id="fonti" class="mt-5">
+        <h2>Fonti</h2>
+        <p>Il testo è quello del decreto legislativo 31 marzo 2023, n. 36, e dei suoi allegati, nelle versioni consolidate (multivigenti) pubblicate da Normattiva in formato Akoma Ntoso. Per ogni comma il sistema conserva tutte le versioni che si sono succedute, con le date di inizio e fine vigenza e l'atto che lo ha modificato.</p>
+        {% if available %}
+        <p>Testi disponibili dal {{ available[0]|data_estesa }}; ultimo aggiornamento consolidato del {{ available[1]|data_estesa }}.</p>
+        {% endif %}
+      </section>
+
+      <section id="metodo" class="mt-5">
+        <h2>Metodo</h2>
+        <ol>
+          <li><strong>Ricerca delle fonti.</strong> Tra i commi in vigore alla data scelta, il sistema cerca quelli pertinenti combinando una ricerca per parole (full-text in italiano) e una ricerca per significato (embedding calcolati localmente). Gli articoli citati esplicitamente nella domanda hanno la precedenza.</li>
+          <li><strong>Risposta con citazioni.</strong> Un modello linguistico riceve soltanto i commi recuperati e deve fondare ogni affermazione su di essi, indicando i passaggi citati. Modello in uso: {{ model }} ({{ provider }}).</li>
+          <li><strong>Astensione.</strong> Se le fonti non contengono la risposta, il sistema lo dichiara invece di rispondere.</li>
+          <li><strong>Valutazione.</strong> La qualità è misurata su un insieme di domande con risposte attese: i risultati sono nella pagina <a href="/valutazione">Valutazione</a>.</li>
+        </ol>
+      </section>
+
+      <section id="limiti" class="mt-5">
+        <h2>Limiti</h2>
+        <ul>
+          <li>Considera solo il Codice e i suoi allegati: non include giurisprudenza, linee guida ANAC, bandi tipo, regolamenti o altre norme richiamate.</li>
+          <li>Le versioni seguono gli aggiornamenti consolidati di Normattiva: una modifica è registrata dalla data di vigenza del testo consolidato che la contiene.</li>
+          <li>Le domande molto generiche o che richiedono un'interpretazione possono ricevere risposte parziali.</li>
+          <li>Le domande sono limitate a {{ settings.max_question_chars }} caratteri{% if settings.rate_limit_per_ip_per_hour %} e a {{ settings.rate_limit_per_ip_per_hour }} all'ora per utente{% endif %}.</li>
+        </ul>
+      </section>
+
+      <section id="privacy" class="mt-5">
+        <h2>Privacy</h2>
+        <p>Il servizio non usa cookie né strumenti di tracciamento. Per misurare l'uso e la qualità vengono registrati il testo delle domande, la data scelta, i riferimenti citati, i tempi di risposta e un codice derivato in modo non reversibile dall'indirizzo IP, usato solo per applicare i limiti di utilizzo: l'indirizzo IP non viene memorizzato. Le domande e le fonti recuperate sono inviate al fornitore del modello linguistico indicato sopra. Non inserire dati personali nelle domande.</p>
+      </section>
+
+      <section id="accessibilita" class="mt-5">
+        <h2>Dichiarazione di accessibilità</h2>
+        <p>Il servizio è progettato per essere conforme ai requisiti WCAG 2.1 di livello AA: struttura semantica con punti di riferimento, collegamento per saltare al contenuto, etichette e messaggi di errore associati ai campi, focus visibile, contrasto adeguato, informazioni mai affidate al solo colore. Funziona anche senza JavaScript.</p>
+        <p class="mb-0">La conformità è verificata con controlli automatici e manuali ma non da un ente terzo. Se incontri un problema di accessibilità puoi segnalarlo aprendo una segnalazione nel repository del progetto.</p>
+      </section>
+    </div>
+  </div>
+</div>
+{% endblock %}

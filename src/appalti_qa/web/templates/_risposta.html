@@ -1,0 +1,53 @@
+{% from "macros.html" import source_item %}
+{% set answer = result.answer %}
+<article class="risposta" aria-labelledby="titolo-risposta">
+  <h2 id="titolo-risposta">Risposta</h2>
+  <dl class="risposta-contesto">
+    <dt>Domanda</dt>
+    <dd>{{ answer.question }}</dd>
+    <dt>Testo vigente al</dt>
+    <dd>{{ answer.at_date|data_estesa }}</dd>
+  </dl>
+
+  {% if answer.abstained %}
+  <div class="alert alert-warning">
+    <h3 class="h5">Nessuna risposta fondata sulle fonti</h3>
+    <p>{{ answer.text }}</p>
+    <p class="mb-0">Prova a riformulare la domanda, a indicare l'articolo che ti interessa o a scegliere un'altra data.</p>
+  </div>
+  {% else %}
+  <div class="risposta-testo">
+    {% for paragraph in result.paragraphs %}
+    <p>{{ paragraph }}</p>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if result.demo %}
+  <p class="nota-demo"><strong>Modalità dimostrativa:</strong> non è configurato alcun modello linguistico, quindi la risposta riporta automaticamente il primo periodo delle fonti più pertinenti.</p>
+  {% endif %}
+
+  {% if result.cited %}
+  <h3 class="h4 mt-4">Fonti citate</h3>
+  <ol class="fonti">
+    {% for source in result.cited %}
+    {{ source_item(source, answer.at_date) }}
+    {% endfor %}
+  </ol>
+  {% endif %}
+
+  {% if result.others %}
+  <h3 class="h4 mt-4">{% if result.cited %}Altre fonti consultate{% else %}Fonti consultate{% endif %}</h3>
+  <details>
+    <summary>Mostra {{ result.others|length }} {% if result.others|length == 1 %}fonte{% else %}fonti{% endif %} recuperate ma non citate nella risposta</summary>
+    <ol class="fonti">
+      {% for source in result.others %}
+      {{ source_item(source, answer.at_date) }}
+      {% endfor %}
+    </ol>
+  </details>
+  {% endif %}
+
+  <p class="risposta-meta mt-4">Risposta generata con il modello {{ answer.model }} ({{ answer.provider }}) in {{ answer.latency_ms|secondi }}.</p>
+  <p class="avvertenza"><strong>Avvertenza:</strong> risposta generata automaticamente, con valore informativo e non di parere legale. Fa fede il testo ufficiale pubblicato su Normattiva.</p>
+</article>

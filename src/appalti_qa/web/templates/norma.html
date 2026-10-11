@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% from "macros.html" import amendments %}
+{% block title %}{{ key|etichetta }}, testo vigente al {{ day|data }}{% endblock %}
+{% block content %}
+<div class="container py-4 py-lg-5">
+  <nav class="breadcrumb-container" aria-label="Percorso di navigazione">
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item"><a href="/">Chiedi</a><span class="separator" aria-hidden="true">/</span></li>
+      <li class="breadcrumb-item active" aria-current="page">{{ key|etichetta }}</li>
+    </ol>
+  </nav>
+
+  <h1>{{ key|etichetta }}</h1>
+  <p class="lead">D.Lgs. 31 marzo 2023, n. 36 (Codice dei contratti pubblici)</p>
+
+  <form method="get" action="{{ norma_path(key) }}" class="d-flex flex-wrap align-items-end gap-3 mb-5">
+    <div class="campo mb-0">
+      <label for="data">Testo vigente al</label>
+      <input type="date" id="data" name="data" class="form-control" value="{{ day.isoformat() }}">
+    </div>
+    <button type="submit" class="btn btn-outline-primary">Mostra il testo</button>
+  </form>
+
+  <section aria-labelledby="titolo-vigente">
+    <h2 id="titolo-vigente">Testo vigente al {{ day|data_estesa }}</h2>
+    {% for hit in hits %}
+    <article class="fonte" aria-labelledby="unita-{{ loop.index }}">
+      <h3 id="unita-{{ loop.index }}" class="h5">{{ hit.label }}{% if hit.heading %} – {{ hit.heading }}{% endif %}</h3>
+      <p class="fonte-vigenza">{{ validity(hit.valid_from, hit.valid_to) }}.{{ amendments(hit.modified_by) }}</p>
+      <div class="testo-norma">{{ hit.text }}</div>
+      <p class="mt-2 mb-0"><a href="{{ hit.normattiva_url }}">Testo ufficiale su Normattiva<span class="visually-hidden"> di {{ hit.label }}</span></a></p>
+    </article>
+    {% else %}
+    <p>Nessun testo di questa disposizione è in vigore al {{ day|data }}: consulta le versioni qui sotto.</p>
+    {% endfor %}
+  </section>
+
+  <section class="mt-5" aria-labelledby="titolo-versioni">
+    <h2 id="titolo-versioni">Versioni nel tempo</h2>
+    <p>Ogni riga indica il periodo in cui il testo è rimasto invariato e l'atto che lo ha modificato.</p>
+    {% for unit in histories %}
+    <div class="table-responsive mb-4">
+      <table class="table">
+        <caption>{{ unit.unit_key|etichetta }}: versioni dalla più recente</caption>
+        <thead>
+          <tr>
+            <th scope="col">Periodo di vigenza</th>
+            <th scope="col">Atto che ha introdotto la versione</th>
+            <th scope="col">Note</th>
+            <th scope="col">Testo</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for version in unit.versions %}
+          <tr>
+            <td>{{ validity(version.valid_from, version.valid_to) }}</td>
+            <td>{{ version.changed_by.label if version.changed_by else "Testo originario" }}</td>
+            <td>
+              {% if version.repealed %}Abrogato{% endif %}
+              {% if version.in_force_at(day) %}In vigore al {{ day|data }}{% endif %}
+            </td>
+            <td>
+              <details>
+                <summary>Mostra<span class="visually-hidden"> il testo in vigore dal {{ version.valid_from|data }}</span></summary>
+                <div class="testo-norma">{{ version.text }}</div>
+              </details>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endfor %}
+  </section>
+</div>
+{% endblock %}

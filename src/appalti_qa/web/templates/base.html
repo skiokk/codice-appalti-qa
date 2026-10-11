@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Domande e risposte sul Codice dei contratti pubblici (D.Lgs. 36/2023), con gli articoli citati e il testo in vigore alla data scelta.">
+  <meta name="htmx-config" content='{"includeIndicatorStyles": false, "allowEval": false, "allowScriptTags": false, "responseHandling": [{"code": "204", "swap": false}, {"code": "[23]..", "swap": true}, {"code": "422|429|503", "swap": true}, {"code": "[45]..", "swap": false, "error": true}]}'>
+  <title>{% block title %}{% endblock %} – Codice Appalti QA</title>
+  <link rel="stylesheet" href="{{ assets.bootstrap_italia_css.url }}" integrity="{{ assets.bootstrap_italia_css.integrity }}" crossorigin="anonymous">
+  <link rel="stylesheet" href="{{ static('css/fonts.css') }}">
+  <link rel="stylesheet" href="{{ static('css/app.css') }}">
+  <link rel="icon" href="{{ static('img/favicon.svg') }}" type="image/svg+xml">
+  <script src="{{ assets.htmx.url }}" integrity="{{ assets.htmx.integrity }}" crossorigin="anonymous" defer></script>
+  <script src="{{ static('js/app.js') }}" defer></script>
+</head>
+<body>
+  <div class="skiplinks">
+    <a class="visually-hidden-focusable" href="#contenuto">Vai al contenuto principale</a>
+    <a class="visually-hidden-focusable" href="#navigazione">Vai al menu</a>
+  </div>
+
+  <header class="it-header-wrapper">
+    <div class="it-header-slim-wrapper">
+      <div class="container">
+        <div class="row">
+          <div class="col-12">
+            <div class="it-header-slim-wrapper-content">
+              <p class="slim-nota mb-0">
+                <span class="d-none d-md-inline">Progetto dimostrativo indipendente: non è un servizio ufficiale della Pubblica Amministrazione</span>
+                <span class="d-md-none">Progetto dimostrativo non ufficiale</span>
+              </p>
+              <div class="it-header-slim-right-zone">
+                <a class="slim-link" href="https://www.normattiva.it/">Normattiva</a>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="it-nav-wrapper">
+      <div class="it-header-center-wrapper">
+        <div class="container">
+          <div class="row">
+            <div class="col-12">
+              <div class="it-header-center-content-wrapper">
+                <div class="it-brand-wrapper">
+                  <a href="/">
+                    <div class="it-brand-text">
+                      <div class="it-brand-title">Codice Appalti QA</div>
+                      <div class="it-brand-tagline d-none d-md-block">Il Codice dei contratti pubblici, con fonti e date di vigenza</div>
+                    </div>
+                  </a>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <nav id="navigazione" class="app-nav" aria-label="Menu principale">
+        <div class="container">
+          <ul class="app-nav__list">
+            {% for path, label, active in [("/", "Chiedi", ["/", "/chiedi"]), ("/valutazione", "Valutazione", ["/valutazione"]), ("/informazioni", "Come funziona", ["/informazioni"])] %}
+            <li><a class="app-nav__link" href="{{ path }}"{% if current_path in active %} aria-current="page"{% endif %}>{{ label }}</a></li>
+            {% endfor %}
+          </ul>
+        </div>
+      </nav>
+    </div>
+  </header>
+
+  <main id="contenuto" tabindex="-1">
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="it-footer">
+    <div class="it-footer-main">
+      <div class="container py-4">
+        <div class="row g-4">
+          <div class="col-lg-7">
+            <h2 class="h5 text-white">Codice Appalti QA</h2>
+            <p class="mb-0">Strumento informativo sul D.Lgs. 31 marzo 2023, n. 36. Le risposte non costituiscono parere legale: fa fede il testo ufficiale pubblicato su Normattiva e nella Gazzetta Ufficiale.</p>
+          </div>
+          <div class="col-lg-5">
+            <h2 class="h5 text-white">Collegamenti</h2>
+            <ul class="footer-links list-unstyled mb-0">
+              <li><a href="/informazioni">Come funziona</a></li>
+              <li><a href="/informazioni#privacy">Privacy</a></li>
+              <li><a href="/informazioni#accessibilita">Dichiarazione di accessibilità</a></li>
+              <li><a href="/api/docs">Documentazione delle API</a></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="it-footer-small-prints">
+      <div class="container py-2">
+        <p class="mb-0">Versione {{ version }} · Testi normativi da Normattiva</p>
+      </div>
+    </div>
+  </footer>
+</body>
+</html>

@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+{% block title %}Valutazione{% endblock %}
+{% block content %}
+<div class="container py-4 py-lg-5">
+  <h1>Valutazione</h1>
+  <p class="lead">Quanto bene il sistema trova le fonti giuste e risponde, misurato su un insieme di domande con risposte e riferimenti attesi.</p>
+
+  {% if results is none %}
+  <div class="alert alert-info">
+    <h2 class="h5">Nessuna valutazione pubblicata</h2>
+    <p class="mb-0">I risultati compariranno qui dopo la prima esecuzione della valutazione (comando <code>appalti-qa eval run</code>).</p>
+  </div>
+  {% else %}
+  <section aria-labelledby="titolo-esecuzione">
+    <h2 id="titolo-esecuzione">Esecuzione</h2>
+    <dl class="risposta-contesto">
+      <dt>Identificativo</dt>
+      <dd>{{ results.run_id }}</dd>
+      <dt>Data</dt>
+      <dd>{{ results.created_at }}</dd>
+      <dt>Domande</dt>
+      <dd>{{ results.evaluated }} valutate su {{ results.dataset_size }} nel dataset; verificate da una persona: {{ results.verified }}</dd>
+      {% for label, value in results.config %}
+      <dt>{{ label }}</dt>
+      <dd>{{ value }}</dd>
+      {% endfor %}
+    </dl>
+  </section>
+
+  {% for section in results.sections %}
+  <section class="mt-5" aria-labelledby="sezione-{{ loop.index }}">
+    <h2 id="sezione-{{ loop.index }}">{{ section.title }}</h2>
+    <div class="table-responsive">
+      <table class="table">
+        <caption>{{ section.title }}: risultati complessivi</caption>
+        <thead>
+          <tr><th scope="col">Metrica</th><th scope="col" class="metrica-valore">Valore</th></tr>
+        </thead>
+        <tbody>
+          {% for label, value in section.overall %}
+          <tr><th scope="row">{{ label }}</th><td class="metrica-valore">{{ value }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% for table in section.breakdowns %}
+    <div class="table-responsive">
+      <table class="table">
+        <caption>{{ table.caption }}</caption>
+        <thead>
+          <tr>
+            <th scope="col">{{ table.group_header }}</th>
+            {% for column in table.columns %}<th scope="col" class="metrica-valore">{{ column }}</th>{% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for group, values in table.rows %}
+          <tr>
+            <th scope="row">{{ group }}</th>
+            {% for value in values %}<td class="metrica-valore">{{ value }}</td>{% endfor %}
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endfor %}
+  </section>
+  {% endfor %}
+
+  {% if results.items %}
+  <section class="mt-5" aria-labelledby="titolo-domande">
+    <h2 id="titolo-domande">Dettaglio per domanda</h2>
+    <details>
+      <summary>Mostra l'esito delle {{ results.items|length }} domande</summary>
+      <div class="table-responsive">
+        <table class="table">
+          <caption>Esito per domanda</caption>
+          <thead>
+            <tr>
+              <th scope="col">Domanda</th>
+              <th scope="col">Riferimenti attesi</th>
+              <th scope="col" class="metrica-valore">Punteggio</th>
+              <th scope="col">Astensione</th>
+              <th scope="col">Riferimenti citati</th>
+              <th scope="col">Primi riferimenti recuperati</th>
+              <th scope="col" class="metrica-valore">Latenza</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in results.items %}
+            <tr>
+              <th scope="row">{{ item.id }}</th>
+              <td>{{ item.expected }}</td>
+              <td class="metrica-valore">{{ item.score }}</td>
+              <td>{{ item.abstained }}</td>
+              <td>{{ item.cited }}</td>
+              <td>{{ item.retrieved }}</td>
+              <td class="metrica-valore">{{ item.latency }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </details>
+  </section>
+  {% endif %}
+  {% endif %}
+
+  <section class="mt-5" aria-labelledby="titolo-metriche">
+    <h2 id="titolo-metriche">Come leggere le metriche</h2>
+    <dl>
+      <dt>Recall@k</dt>
+      <dd>Quota dei riferimenti attesi presenti tra le prime k fonti recuperate.</dd>
+      <dt>Hit@k</dt>
+      <dd>Quota di domande per cui almeno un riferimento atteso è tra le prime k fonti.</dd>
+      <dt>MRR</dt>
+      <dd>Media dell'inverso della posizione della prima fonte corretta (1 = sempre in prima posizione).</dd>
+      <dt>Correttezza</dt>
+      <dd>Giudizio sulla risposta rispetto a quella attesa: 1 corretta, 0,5 parziale, 0 errata.</dd>
+      <dt>Precisione e copertura delle citazioni</dt>
+      <dd>Quota di riferimenti citati che sono attesi, e quota di riferimenti attesi che sono citati.</dd>
+      <dt>Accuratezza dell'astensione</dt>
+      <dd>Quota di domande in cui il sistema si astiene quando il testo non contiene la risposta e risponde negli altri casi.</dd>
+    </dl>
+  </section>
+</div>
+{% endblock %}

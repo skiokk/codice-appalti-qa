@@ -1,0 +1,23 @@
+{# Content of the result region: validation errors, limits, failures or the answer. #}
+{% if form.errors %}
+<div class="alert alert-danger">
+  <h2 class="h5">La domanda non è stata inviata</h2>
+  <ul class="mb-0">
+    {% for field, message in form.errors.items() %}
+    <li><a href="#{{ {'question': 'domanda', 'date': 'data'}[field] }}">{{ message }}</a></li>
+    {% endfor %}
+  </ul>
+</div>
+{% elif notice is defined %}
+<div class="alert alert-warning">
+  <h2 class="h5">Limite di domande raggiunto</h2>
+  <p class="mb-0">{{ notice }}</p>
+</div>
+{% elif failure is defined %}
+<div class="alert alert-danger">
+  <h2 class="h5">Servizio non disponibile</h2>
+  <p class="mb-0">{{ failure }}</p>
+</div>
+{% elif result is defined %}
+{% include "_risposta.html" %}
+{% endif %}

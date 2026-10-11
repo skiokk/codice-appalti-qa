@@ -1,0 +1,4 @@
+{# htmx response: the result region plus the form fields, swapped out of band. #}
+{% from "macros.html" import question_fields %}
+{% include "_esito.html" %}
+{{ question_fields(form, max_chars, oob=true) }}

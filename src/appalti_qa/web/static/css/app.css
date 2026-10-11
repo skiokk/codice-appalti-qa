@@ -1,0 +1,284 @@
+/* Application styles on top of Bootstrap Italia. Colours keep at least 4.5:1 contrast on their
+   background; states are always stated in text as well. */
+
+:root {
+  --app-text: hsl(0, 0%, 10%);
+  --app-muted: hsl(210, 17%, 35%);
+  --app-primary: hsl(210, 100%, 40%);
+  --app-primary-dark: hsl(210, 100%, 25%);
+  --app-error: hsl(350, 60%, 40%);
+  --app-surface: hsl(210, 33%, 97%);
+  --app-border: hsl(210, 17%, 72%);
+}
+
+/* Header and navigation (no JavaScript needed: the menu never collapses) */
+.slim-nota {
+  color: #fff;
+  font-size: 0.875rem;
+}
+
+.it-header-slim-wrapper .slim-link {
+  color: #fff;
+  text-decoration: underline;
+}
+
+.it-brand-wrapper a {
+  color: #fff;
+  text-decoration: none;
+}
+
+.app-nav {
+  background: var(--app-primary-dark);
+}
+
+.app-nav__list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1.5rem;
+  margin: 0;
+  padding: 0.5rem 0;
+  list-style: none;
+}
+
+.app-nav__link {
+  display: inline-block;
+  padding: 0.5rem 0.25rem;
+  color: #fff;
+  font-weight: 600;
+  text-decoration: none;
+  border-bottom: 3px solid transparent;
+}
+
+.app-nav__link:hover {
+  color: #fff;
+  text-decoration: underline;
+}
+
+.app-nav__link[aria-current="page"] {
+  border-bottom-color: #fff;
+}
+
+main:focus {
+  outline: none;
+}
+
+/* Form fields: label, hint, error and control stacked in this order */
+.campo {
+  margin-bottom: 1.75rem;
+}
+
+.campo label {
+  display: block;
+  position: static;
+  margin-bottom: 0.25rem;
+  padding: 0;
+  font-weight: 600;
+  color: var(--app-text);
+}
+
+.campo-aiuto {
+  margin-bottom: 0.5rem;
+  color: var(--app-muted);
+  font-size: 0.9375rem;
+}
+
+.campo-errore {
+  border-left: 4px solid var(--app-error);
+  padding-left: 1rem;
+}
+
+.campo-messaggio-errore {
+  margin-bottom: 0.5rem;
+  color: var(--app-error);
+  font-weight: 600;
+}
+
+.campo-errore .form-control {
+  border: 2px solid var(--app-error);
+}
+
+.campo textarea.form-control {
+  min-height: 8rem;
+}
+
+.campo input[type="date"].form-control {
+  max-width: 14rem;
+  border: 1px solid var(--app-border);
+}
+
+/* htmx loading indicator (htmx's own inline styles are disabled for the CSP) */
+.htmx-indicator {
+  display: none;
+}
+
+.htmx-request.htmx-indicator,
+.htmx-request .htmx-indicator {
+  display: flex;
+}
+
+.attesa {
+  align-items: center;
+  gap: 0.75rem;
+  color: var(--app-muted);
+}
+
+.attesa .progress-spinner {
+  width: 1.5rem;
+  height: 1.5rem;
+  border-width: 3px;
+  border-top-color: var(--app-primary);
+  animation: attesa-giro 0.9s linear infinite;
+}
+
+@keyframes attesa-giro {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .attesa .progress-spinner {
+    animation: none;
+  }
+}
+
+/* Answer */
+.risposta-contesto {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.25rem 1rem;
+  padding: 1rem;
+  background: var(--app-surface);
+}
+
+.risposta-contesto dt {
+  font-weight: 600;
+}
+
+.risposta-contesto dd {
+  margin: 0;
+}
+
+.risposta-testo p,
+.testo-norma {
+  white-space: pre-line;
+}
+
+.risposta-testo {
+  font-size: 1.125rem;
+}
+
+.rif-fonte {
+  font-size: 0.875em;
+  font-weight: 600;
+  vertical-align: super;
+  line-height: 0;
+  margin-left: 0.1em;
+}
+
+.fonti {
+  padding: 0;
+  list-style: none;
+}
+
+.fonte {
+  margin-bottom: 1.25rem;
+  padding: 1rem 1.25rem;
+  border: 1px solid var(--app-border);
+  border-left: 4px solid var(--app-primary);
+}
+
+.fonte:target {
+  background: var(--app-surface);
+}
+
+.fonte-numero {
+  margin-right: 0.25rem;
+  color: var(--app-primary-dark);
+}
+
+.fonte-vigenza,
+.risposta-meta {
+  color: var(--app-muted);
+  font-size: 0.9375rem;
+}
+
+.fonte-citazione {
+  margin: 0.75rem 0;
+  padding-left: 1rem;
+  border-left: 3px solid var(--app-border);
+  font-family: "Lora", Georgia, serif;
+}
+
+.fonte-link {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.5rem;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+details {
+  margin: 0.5rem 0;
+}
+
+summary {
+  color: var(--app-primary);
+  font-weight: 600;
+  text-decoration: underline;
+}
+
+details[open] > summary {
+  margin-bottom: 0.5rem;
+}
+
+.testo-norma {
+  padding: 0.75rem 1rem;
+  background: var(--app-surface);
+  border-left: 3px solid var(--app-border);
+}
+
+.nota-demo,
+.avvertenza {
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--app-border);
+  background: var(--app-surface);
+}
+
+/* Side panel */
+.esempi {
+  padding-left: 1.25rem;
+}
+
+.esempi li {
+  margin-bottom: 0.5rem;
+}
+
+/* Tables */
+.table caption {
+  caption-side: top;
+  color: var(--app-text);
+  font-weight: 600;
+}
+
+.metrica-valore {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* Footer */
+.it-footer-main a {
+  color: #fff;
+  text-decoration: underline;
+}
+
+.it-footer-main .footer-links li {
+  margin-bottom: 0.5rem;
+}
+
+.it-footer-small-prints {
+  background: var(--app-primary-dark);
+  color: #fff;
+  font-size: 0.875rem;
+}
