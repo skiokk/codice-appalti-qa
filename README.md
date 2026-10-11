@@ -22,8 +22,9 @@ sources do not answer the question. It also publishes how often it gets things r
 
 - **Point-in-time text.** 20 Normattiva consolidated snapshots, one for each day the text
   changed from 2023-04-01 to 2026-08-26 (checked through 2026-10-11), are parsed into 2,814 units
-  (commi, and the allegati) with 3,215 versions. Each version records its validity interval,
-  dated to the first day Normattiva serves it, and the act that amended it.
+  (commi, and the allegati) with 3,213 versions. Each version records its validity interval,
+  dated to the first day Normattiva serves it, and, when Normattiva marks the change as an
+  amendment, the act that made it. Article headings are dated too.
 - **Hybrid retrieval in PostgreSQL.** Italian full-text search (`tsvector`) and local
   multilingual embeddings (`intfloat/multilingual-e5-base` on CPU, pgvector HNSW), fused with
   reciprocal rank fusion and filtered by date. Explicit references such as "art. 50, comma 1,
@@ -93,16 +94,22 @@ day of each new text; only those boundary snapshots are kept, named by that day.
    third numbered block of an allegato without articles). A reference to a lettera (`50/1/b`)
    matches its comma. Exports up to 2024 are flat text, so commi and lettere are found in running
    text with numbering rules. Exports from 2025 are structured. Both shapes produce the same keys
-   and the same wording.
+   and the same wording. Where a flat export restarts the comma numbering from 1 inside an
+   article (arts. 34, 41 and 62), the numbering of the structured exports is adopted when the
+   texts match, so commi such as 41/13 exist from 2023-04-01.
 2. **Dates each version by its snapshot's file date**, the first day the text was served. For
    example, D.L. 124/2023, published on 19 September 2023, changes allegato V.3 from 20
    September, and L. 34/2026, published on 23 March 2026, applies from 7 April 2026.
 3. **Opens a new version only when the wording changes.** The previous version is closed
-   (`valid_to` is exclusive) and the new one is credited to the amending act that introduced it.
-   A change of punctuation or capitalisation only, or a different split of the same words into
-   commi, is an *editorial* version credited to no act; a new article heading alone updates the
-   heading without a new version. The corpus has 2,575 original, 630 amended and 10 editorial
-   versions.
+   (`valid_to` is exclusive). The new one is an *amendment*, credited to the latest amending
+   act in the export's lifecycle by that date, only when the words that changed touch the text
+   Normattiva marks as amended (`((...))`, deletion markers, repeal notes) or the comma is
+   repealed. Other differences
+   (punctuation, a different split into commi, a reworded repeal note, words an export dropped or
+   duplicated) are *editorial* versions credited to no act. A new article heading alone is not a
+   new version: the heading is stored with its own dates and the one in force at the query date
+   is shown, searched and given to the model. The corpus has 2,593 original, 589 amended and 31
+   editorial versions, and 25 rows where only the heading changed (8 articles).
 
 A query at date *D* only sees versions with `valid_from <= D < valid_to`. The interface shows each
 source's validity interval, the acts that modified it, and its full version history.
@@ -246,10 +253,14 @@ Environment variables, also read from `.env` (see [.env.example](.env.example)):
   refers to.
 - **Granularity.** A change is dated to the first day Normattiva serves it and credited per
   date, not per comma: when several acts take effect on the same day, the latest published one is
-  credited (the doubt is logged), and a few changes that only re-lay out a table or a repeal note
-  count as amendments. A change of an article heading alone is not versioned. Allegati without
-  articles are split into blocks in document order (`p1`, `p2`, ...), which may not match their
-  printed numbering.
+  credited (the doubt is logged). Allegati without articles are split into blocks in document
+  order (`p1`, `p2`, ...), which may not match their printed numbering.
+- **Amendment or editorial.** The distinction rests on Normattiva's markers: a change an act made
+  without a marker would be editorial, and marked text that differs only between the 2024 flat
+  and the 2025 structured exports counts as an amendment (11 units on 2025-03-15 are credited to
+  D.L. 25/2025, several of them likely of this kind; see
+  [docs/modules/ingest.md](docs/modules/ingest.md)). Defects of a single export, such as a
+  sentence of art. 125, comma 1, missing from the 2024-12-31 text, are not repaired.
 - **Evaluation.** The questions are drafts awaiting expert review, and answer quality has not yet
   been measured with a real model.
 - **Abstention** depends on the model: the relevance threshold that would let retrieval alone

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from appalti_qa.ingest.text import has_markers, is_repealed, normalize_text
+from appalti_qa.ingest.text import has_markers, is_repealed, normalize_lines, normalize_text
 from appalti_qa.models import UnitKind
 
 
@@ -21,7 +21,14 @@ class ParsedUnit:
     text: str
     ordinal: int
     repealed: bool = False
-    amended: bool = False  # the snapshot marks (part of) the text as inserted or replaced
+    # The text (and heading) with Normattiva's "((...))" markers kept; empty without markers.
+    marked: str = ""
+    heading_marked: str = ""
+
+    @property
+    def amended(self) -> bool:
+        """True when the snapshot marks (part of) the text as inserted, replaced or deleted."""
+        return bool(self.marked)
 
 
 def make_unit(
@@ -46,5 +53,5 @@ def make_unit(
         text=text,
         ordinal=0,
         repealed=is_repealed(text),
-        amended=has_markers(raw_text),
+        marked=normalize_lines(raw_text) if has_markers(raw_text) else "",
     )

@@ -2,6 +2,8 @@
 
 Rules (see docs/architecture.md, section 4, and decision 7 in docs/decisions.md):
 
+0. The comma numbering of flat articles that restart it is first decided against the
+   structured exports (``alignment.align_numbering``).
 1. Snapshots are sorted by ``vigenza_date``. A snapshot whose normalised content
    (``content_digest``: keys, headings and wording of every unit, layout ignored) equals the
    previous one adds no version; it only refreshes the rendering of the open versions.
@@ -12,20 +14,26 @@ Rules (see docs/architecture.md, section 4, and decision 7 in docs/decisions.md)
    several exports (20250401 still says 2024-12-31), and a mismatch is logged.
 3. A unit gets a new version when its wording changes (``content_fingerprint``: whitespace,
    dots, hyphens, quotes and markers ignored), so the switch from flat (2024) to structured
-   (2025) exports does not create versions. A change of the article heading alone does not
-   create a version either: the open version takes the new heading, as it takes the latest
-   rendering of its text. The open version is closed (``valid_to``, exclusive) on the new
-   version's ``valid_from``. A unit missing from a snapshot is closed on that snapshot's date
-   and gets a new version if it reappears.
-4. ``change_kind`` says what a version is: ``original`` for the first snapshot, ``editorial``
-   when only punctuation or capitalisation changed (same ``word_fingerprint``) or when the
-   article's text is only split into commi differently (the same words in document order),
-   ``amendment`` otherwise. ``changed_by`` of an amendment is the amending act whose lifecycle
+   (2025) exports does not create versions. The open version is closed (``valid_to``,
+   exclusive) on the new version's ``valid_from``. A unit missing from a snapshot is closed on
+   that snapshot's date and gets a new version if it reappears. An unchanged version keeps the
+   latest rendering of its text.
+   A change of the heading alone is not a new version of the text, but it does close the row
+   and open one with the same text and the new heading (``change_kind`` ``heading``): every row
+   keeps the heading in force over its interval, so the passage indexed for search (heading and
+   text) never changes for a date already covered. A heading rewritten without new words
+   (layout only) refreshes the rendering instead.
+4. ``change_kind`` says what a version is: ``original`` for the first snapshot; ``editorial``
+   when only punctuation or capitalisation changed (same ``word_fingerprint``), when the
+   article's text is only split into commi differently (the same words in document order), or
+   when the words that changed do not touch Normattiva's amendment markers (``_marked_change``:
+   re-layout, words an export dropped or duplicated, a repeal note reworded); ``amendment``
+   when they do, or when the unit becomes repealed. ``changed_by`` of an amendment (and of a
+   ``heading`` row whose new heading touches markers) is the amending act whose lifecycle
    event is the latest one dated on or before ``valid_from``, taken from the lifecycle of the
    export that introduced it (an act published that day but not yet listed there did not cause
-   the change); original and editorial versions have none. Doubtful attributions (no act
-   published since the previous change, several acts, an act missing from the export's
-   lifecycle) are logged.
+   the change); other rows have none. Doubtful attributions (no act published since the
+   previous change, several acts, an act missing from the export's lifecycle) are logged.
 5. Versions present in the last snapshot stay open (``valid_to`` is None).
 """
 
@@ -34,11 +42,19 @@ from __future__ import annotations
 import hashlib
 import logging
 from collections.abc import Iterable, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import date
+from difflib import SequenceMatcher
 
 from appalti_qa.ingest.akn import ActInfo, ParsedSnapshot
-from appalti_qa.ingest.text import content_fingerprint, text_hash, word_fingerprint
+from appalti_qa.ingest.alignment import NumberingDecision, align_numbering
+from appalti_qa.ingest.text import (
+    Token,
+    content_fingerprint,
+    marked_words,
+    text_hash,
+    word_fingerprint,
+)
 from appalti_qa.ingest.units import ParsedUnit
 from appalti_qa.models import ChangeKind, Event
 
@@ -65,6 +81,7 @@ class VersionedCorpus:
     events: list[Event]  # union over all snapshots, by date
     units: list[ParsedUnit]  # latest metadata per key, final ordinals
     versions: list[VersionRecord]  # by unit ordinal, then valid_from
+    numbering: list[NumberingDecision] = field(default_factory=list)  # restarted runs read
 
 
 @dataclass(slots=True)
@@ -125,7 +142,7 @@ def build_versions(snapshots: Sequence[ParsedSnapshot]) -> VersionedCorpus:
     """Merge parsed snapshots into versioned units; raises ValueError when empty."""
     if not snapshots:
         raise ValueError("no snapshots to version")
-    ordered = sorted(snapshots, key=lambda s: s.vigenza_date)
+    ordered, numbering = align_numbering(sorted(snapshots, key=lambda s: s.vigenza_date))
     events = _union_events(ordered)
     amendments = [event for event in events if event.kind == "amendment"]
     kept: list[tuple[ParsedSnapshot, date]] = []
@@ -144,13 +161,25 @@ def build_versions(snapshots: Sequence[ParsedSnapshot]) -> VersionedCorpus:
         first = not kept
         kept.append((snapshot, effective))
         last_digest = digest
-        attributed: list[Event | None] = []  # computed on the first amended unit
+        credit = _Credit(snapshot, effective, previous, amendments)
         resplit = _resplit_containers([v.unit for v in open_versions.values()], snapshot.units)
         for key, unit in present.items():
             fingerprint = content_fingerprint(unit.text)
             current = open_versions.get(key)
             if current is not None and current.fingerprint == fingerprint:
-                current.unit = unit
+                if _same_heading(current.unit, unit):
+                    current.unit = unit
+                    continue
+                # The heading alone changed: a new row for the passage, not a new version.
+                marked = _touches_marks(
+                    current.unit.heading_marked or current.unit.heading or "",
+                    unit.heading_marked or unit.heading or "",
+                )
+                current.valid_to = effective
+                closed.append(current)
+                open_versions[key] = _Open(
+                    unit, fingerprint, effective, credit() if marked else None, "heading"
+                )
                 continue
             if first:
                 kind: ChangeKind = "original"
@@ -158,16 +187,19 @@ def build_versions(snapshots: Sequence[ParsedSnapshot]) -> VersionedCorpus:
                 current is not None and _same_words(current.unit, unit)
             ):
                 kind = "editorial"
-            else:
+            elif _marked_change(current.unit if current else None, unit):
                 kind = "amendment"
-            changed_by = None
-            if kind == "amendment":
-                if not attributed:
-                    attributed.append(_attribute(snapshot, effective, previous, amendments))
-                changed_by = attributed[0]
+            else:
+                kind = "editorial"
+                logger.debug(
+                    "%s: %s changed outside the amendment markers: editorial",
+                    snapshot.source_file,
+                    key,
+                )
             if current is not None:
                 current.valid_to = effective
                 closed.append(current)
+            changed_by = credit() if kind == "amendment" else None
             open_versions[key] = _Open(unit, fingerprint, effective, changed_by, kind)
         for key in [key for key in open_versions if key not in present]:
             gone = open_versions.pop(key)
@@ -180,8 +212,75 @@ def build_versions(snapshots: Sequence[ParsedSnapshot]) -> VersionedCorpus:
         key=lambda record: (ordinals[record.unit_key], record.valid_from),
     )
     return VersionedCorpus(
-        act=kept[-1][0].act, snapshots=kept, events=events, units=units, versions=versions
+        act=kept[-1][0].act,
+        snapshots=kept,
+        events=events,
+        units=units,
+        versions=versions,
+        numbering=numbering,
     )
+
+
+@dataclass(slots=True)
+class _Credit:
+    """The act credited with the amendments of one snapshot, computed on first use."""
+
+    snapshot: ParsedSnapshot
+    effective: date
+    previous: date | None
+    amendments: list[Event]
+    event: Event | None = None
+    done: bool = False
+
+    def __call__(self) -> Event | None:
+        if not self.done:
+            self.event = _attribute(self.snapshot, self.effective, self.previous, self.amendments)
+            self.done = True
+        return self.event
+
+
+def _same_heading(before: ParsedUnit, after: ParsedUnit) -> bool:
+    return content_fingerprint(before.heading) == content_fingerprint(after.heading)
+
+
+def _touches_marks(before: str, after: str) -> bool:
+    """True when the words that differ between the two texts touch a ``((...))`` span.
+
+    Both texts keep Normattiva's markers. The words are compared in order; a difference touches
+    marked text when an inserted or replaced word is marked in ``after``, a removed or replaced
+    word was marked in ``before``, or words were removed from inside a span of ``after`` (or
+    added inside a span of ``before``), the span closing the text included. A deletion marker
+    counts as a word; a repeal note counts as one word whatever its wording ("COMMA SOPPRESSO"
+    reworded as "PERIODO SOPPRESSO").
+    """
+    old, new = marked_words(before), marked_words(after)
+    matcher = SequenceMatcher(None, [w for w, _ in old], [w for w, _ in new], autojunk=False)
+    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+        if tag == "equal":
+            continue
+        if any(marked for _, marked in (*old[i1:i2], *new[j1:j2])):
+            return True
+        if (tag == "delete" and _inside(new, j1)) or (tag == "insert" and _inside(old, i1)):
+            return True
+    return False
+
+
+def _inside(tokens: list[Token], position: int) -> bool:
+    """True when the gap before ``tokens[position]`` lies inside a marked span."""
+    sides = [tokens[i][1] for i in (position - 1, position) if 0 <= i < len(tokens)]
+    return bool(sides) and all(sides)
+
+
+def _marked_change(before: ParsedUnit | None, after: ParsedUnit) -> bool:
+    """True when the export marks the change from ``before`` to ``after`` as an amendment.
+
+    The words that changed touch marked text (``_touches_marks``), or the unit becomes
+    repealed. A unit that appears or reappears is an amendment when any of its text is marked.
+    """
+    if after.repealed and (before is None or not before.repealed):
+        return True
+    old = (before.marked or before.text) if before is not None else ""
+    return _touches_marks(old, after.marked or after.text)
 
 
 def _same_words(before: ParsedUnit, after: ParsedUnit) -> bool:

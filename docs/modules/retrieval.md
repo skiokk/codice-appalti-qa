@@ -15,8 +15,16 @@ answer a question, and looks units up by reference.
 
 Every query filters `valid_from <= D AND (valid_to IS NULL OR valid_to > D)`. Searches skip
 repealed versions; `lookup` and `history` return them, since "abrogato" is itself an answer.
-`history` fills `change_kind` on each version; `Hit.modified_by` lists only amending acts, so
+`history` fills `change_kind` on each version; `Hit.modified_by` lists only credited acts, so
 editorial versions (no act) never appear there.
+
+Headings are point-in-time too. A row of `unit_versions` is one text under one heading: when only
+the article heading changes, ingestion opens a `heading` row with the same text. The heading of a
+hit (shown in the interface and given to the model as the source's *Rubrica*) and the passage
+matched by full-text and semantic search are therefore those in force at the query date. A hit's
+validity is that of the text, across such rows; `history` folds them into the text version as
+`heading_changes`, and the history table of the unit page lists them. On the corpus there are
+25 such rows (arts. 57, 140, 216, 217 and all. I.5, II.3, V.2).
 
 ## Modes
 

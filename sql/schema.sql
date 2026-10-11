@@ -46,25 +46,29 @@ CREATE TABLE IF NOT EXISTS units (
     article   text,                                -- "50", "225-bis"; article inside the allegato for annex units
     comma     text,                                -- "1", "1-bis"
     allegato  text,                                -- "I.1"; NULL for units of the code body
-    heading   text,                                -- latest article (or allegato) heading
+    heading   text,                                -- latest article (or allegato) heading; dated headings are on unit_versions
     ordinal   integer NOT NULL,                    -- document order across the whole act
     UNIQUE (act_id, key)
 );
 CREATE INDEX IF NOT EXISTS units_article_idx ON units (act_id, allegato, article);
 
 -- Point-in-time text of each unit. In force at D: valid_from <= D AND (valid_to IS NULL OR valid_to > D).
+-- One row per text and heading: a change of the heading alone closes the row and opens one with
+-- the same text and change_kind 'heading', so tsv and embedding are those in force at any date.
 CREATE TABLE IF NOT EXISTS unit_versions (
     id               bigserial PRIMARY KEY,
     unit_id          integer NOT NULL REFERENCES units (id) ON DELETE CASCADE,
-    heading          text,                         -- article heading as of this version
+    heading          text,                         -- article (or allegato) heading in force over the row
     text             text NOT NULL,
     text_hash        char(64) NOT NULL,            -- sha256 hex of text (UTF-8)
     valid_from       date NOT NULL,
     valid_to         date,                         -- exclusive; NULL = still in force
-    changed_by_event integer REFERENCES events (id) ON DELETE SET NULL,  -- NULL unless change_kind = 'amendment'
+    changed_by_event integer REFERENCES events (id) ON DELETE SET NULL,  -- the act behind an 'amendment' (or a marked 'heading' change)
     change_kind      text NOT NULL DEFAULT 'amendment'
-                     CHECK (change_kind IN ('original', 'amendment', 'editorial')),
-                     -- 'editorial': only punctuation/capitalisation differ from the previous version
+                     CHECK (change_kind IN ('original', 'amendment', 'editorial', 'heading')),
+                     -- 'amendment': the words changed where Normattiva marks an amendment;
+                     -- 'editorial': changed outside any marker (no act credited);
+                     -- 'heading': same text as the previous row, new heading
     repealed         boolean NOT NULL DEFAULT false,
     tsv              tsvector GENERATED ALWAYS AS (
                          setweight(to_tsvector('italian'::regconfig, coalesce(heading, '')), 'A')
@@ -75,9 +79,12 @@ CREATE TABLE IF NOT EXISTS unit_versions (
     CHECK (valid_to IS NULL OR valid_to > valid_from),
     EXCLUDE USING gist (unit_id WITH =, daterange(valid_from, valid_to, '[)') WITH &&)
 );
--- Databases created before change_kind existed get the column here (existing rows: 'amendment').
-ALTER TABLE unit_versions ADD COLUMN IF NOT EXISTS change_kind text NOT NULL DEFAULT 'amendment'
-    CHECK (change_kind IN ('original', 'amendment', 'editorial'));
+-- Databases created before change_kind existed get the column here (existing rows: 'amendment'),
+-- and those created before 'heading' existed get the wider check.
+ALTER TABLE unit_versions ADD COLUMN IF NOT EXISTS change_kind text NOT NULL DEFAULT 'amendment';
+ALTER TABLE unit_versions DROP CONSTRAINT IF EXISTS unit_versions_change_kind_check;
+ALTER TABLE unit_versions ADD CONSTRAINT unit_versions_change_kind_check
+    CHECK (change_kind IN ('original', 'amendment', 'editorial', 'heading'));
 CREATE INDEX IF NOT EXISTS unit_versions_unit_idx ON unit_versions (unit_id, valid_from);
 CREATE INDEX IF NOT EXISTS unit_versions_hash_idx ON unit_versions (text_hash);
 CREATE INDEX IF NOT EXISTS unit_versions_tsv_idx ON unit_versions USING gin (tsv);

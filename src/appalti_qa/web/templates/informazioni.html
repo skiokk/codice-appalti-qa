@@ -34,7 +34,10 @@
         <h2>Limiti</h2>
         <ul>
           <li>Considera solo il Codice e i suoi allegati: non include giurisprudenza, linee guida ANAC, bandi tipo, regolamenti o altre norme richiamate.</li>
-          <li>Le versioni seguono i testi consolidati di Normattiva: ogni modifica decorre dal primo giorno in cui Normattiva pubblica il testo aggiornato. Se più atti entrano in vigore nello stesso giorno, la modifica è attribuita all'ultimo pubblicato; le variazioni di sola punteggiatura o di suddivisione in commi sono indicate come modifiche redazionali, senza atto modificativo.</li>
+          <li>Le versioni seguono i testi consolidati di Normattiva: ogni modifica decorre dal primo giorno in cui Normattiva pubblica il testo aggiornato. Se più atti entrano in vigore nello stesso giorno, la modifica è attribuita all'ultimo pubblicato.</li>
+          <li>Una nuova versione è attribuita a un atto modificativo solo se le parole cambiate rientrano nel testo che Normattiva segnala come modificato (tra doppie parentesi) o se il comma viene abrogato. Le altre variazioni (punteggiatura, impaginazione, suddivisione in commi, note di soppressione riformulate, parole che un'esportazione aveva omesso o ripetuto) sono indicate come modifiche redazionali, senza atto. La regola dipende dai segni di Normattiva: dove mancano o cambiano solo di posizione, la classificazione può essere errata.</li>
+          <li>La rubrica di ogni articolo è quella in vigore alla data scelta: se cambia solo la rubrica, il testo dei commi non ha una nuova versione e il cambio è indicato nello storico.</li>
+          <li>Nei testi esportati da Normattiva fino al 2024 alcuni commi hanno una numerazione errata (articoli 34, 41 e 62, che ricominciano da 1): il sistema la ricostruisce confrontando il testo con le esportazioni del 2025, in cui ogni comma è numerato. Altri difetti delle esportazioni, come frasi mancanti in una singola data, non sono corretti: fa fede il testo ufficiale.</li>
           <li>Le domande molto generiche o che richiedono un'interpretazione possono ricevere risposte parziali.</li>
           <li>Le domande sono limitate a {{ settings.max_question_chars }} caratteri{% if settings.rate_limit_per_ip_per_hour %} e a {{ settings.rate_limit_per_ip_per_hour }} all'ora per utente{% endif %}.</li>
         </ul>

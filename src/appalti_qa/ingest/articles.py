@@ -10,22 +10,29 @@ Normattiva exports articles in two shapes:
 
 Both produce the same keys and, for unchanged commi, the same wording.
 
-Per-article override: the flat exports number the last two commi of art. 34 "1." and "2."
-while the structured exports number them 5 and 6, so the flat text of art. 34 is split with
-``renumber_tail``. Arts. 205 and 207 have a similar run ("1.", "2." after comma 5, "1." after
-comma 1) left inside a comma in *both* shapes; they are kept as exported so that their keys do
-not change with the format switch.
+Restarted numbering: some flat exports number a few commi from "1." again inside an article
+(art. 41 commi 9-10, art. 62 commi 8-9 and art. 34 commi 5-6 read "1.", "2."). A flat article
+with such a run is split twice: as exported (the run stays inside the previous comma) and with
+the run read as the next commi. Which reading is right is decided across snapshots by
+``alignment.align_numbering``, against the same article in a structured export.
 """
 
 from __future__ import annotations
 
 import logging
 import re
+from dataclasses import dataclass, replace
 
 from lxml import etree
 
-from appalti_qa.ingest.numbering import layout_lettere, split_numbered
-from appalti_qa.ingest.text import clean_heading, collapse_whitespace, cut_notes, is_note
+from appalti_qa.ingest.numbering import RunPolicy, layout_lettere, split_numbered
+from appalti_qa.ingest.text import (
+    clean_heading,
+    collapse_whitespace,
+    cut_notes,
+    has_markers,
+    is_note,
+)
 from appalti_qa.ingest.units import ParsedUnit, make_unit
 from appalti_qa.ingest.xmlutil import block_lines, child, children, inline_text, local_name
 from appalti_qa.keys import (
@@ -39,19 +46,50 @@ from appalti_qa.keys import (
 logger = logging.getLogger(__name__)
 
 _SUFFIXES = "|".join(sorted(LATIN_SUFFIXES, key=len, reverse=True))
-_RENUMBER_TAIL = frozenset({"34"})  # see the module docstring
 _ARTICLE_PREFIX_RE = re.compile(rf"^Articolo\s+(?P<n>\d+(?:[\s-]*(?:{_SUFFIXES}))?)\b\s*\.?\s*")
 
 
-def article_units(article: etree._Element) -> list[ParsedUnit]:
-    """Units of one ``<article>`` of the code body, in document order."""
+@dataclass(frozen=True, slots=True)
+class ParsedArticle:
+    """The units of one article of the code body, in document order."""
+
+    number: str  # "50", "225-bis"
+    structured: bool  # one <paragraph> per comma: the export's own <num> numbers the commi
+    units: list[ParsedUnit]  # as numbered in the export
+    # Flat text with restarted numbering: the units with every run read as the next commi.
+    renumbered: list[ParsedUnit] | None = None
+
+
+def article_units(article: etree._Element) -> ParsedArticle:
+    """Units of one ``<article>`` of the code body.
+
+    Text between the heading and comma 1 continues the heading: art. 221 is exported as
+    heading "Indirizzo, ... presso la Cabina di regia" followed by "Governance dei servizi" in
+    the flat exports, as one heading in the structured ones; art. 140 marks the deletion of
+    words from its heading with a "((...))" paragraph after it.
+    """
     number = article_from_num(inline_text(child(article, "num")))
-    heading = clean_heading(inline_text(child(article, "heading")))
+    raw_heading = inline_text(child(article, "heading"))
     paragraphs = [p for p in children(article, "paragraph") if not is_note(inline_text(p))]
     first = next((c for p in paragraphs if (c := _comma(p)) is not None), None)
     if first == "1":
-        return _structured(number, heading, paragraphs)
-    return _flat(number, heading, paragraphs)
+        units = _structured(number, raw_heading, paragraphs)
+        return ParsedArticle(number, True, units)
+    as_exported = _flat(number, raw_heading, paragraphs, "keep")
+    renumbered = _flat(number, raw_heading, paragraphs, "continue")
+    differs = [u.key for u in renumbered] != [u.key for u in as_exported]
+    return ParsedArticle(number, False, as_exported, renumbered if differs else None)
+
+
+def _with_heading(units: list[ParsedUnit], raw_heading: str, lead: str) -> list[ParsedUnit]:
+    """The units with the heading made of ``raw_heading`` and the ``lead`` text before comma 1.
+
+    ``heading_marked`` keeps the markers of both, as evidence for a change of the heading.
+    """
+    raw = f"{raw_heading}. {lead}" if raw_heading.strip() and lead.strip() else raw_heading or lead
+    heading = clean_heading(raw)
+    marked = collapse_whitespace(raw) if heading is not None and has_markers(raw) else ""
+    return [replace(unit, heading=heading, heading_marked=marked) for unit in units]
 
 
 def _comma(paragraph: etree._Element) -> str | None:
@@ -65,36 +103,29 @@ def _comma(paragraph: etree._Element) -> str | None:
 
 
 def _structured(
-    article: str, heading: str | None, paragraphs: list[etree._Element]
+    article: str, raw_heading: str, paragraphs: list[etree._Element]
 ) -> list[ParsedUnit]:
     commi: dict[str, list[str]] = {}
+    lead: list[str] = []  # unnumbered paragraphs before comma 1: the heading or its rest
     for paragraph in paragraphs:
         comma = _comma(paragraph)
         if comma is None:
             text = collapse_whitespace(inline_text(paragraph))
-            if not commi and heading is None:
-                heading = clean_heading(text)  # heading exported as an unnumbered paragraph
-            elif commi:
+            if commi:
                 next(reversed(commi.values())).append(text)
             elif text:
-                logger.debug("art. %s: ignoring unnumbered paragraph %r", article, text[:60])
+                lead.append(text)
             continue
         if comma in commi:
             logger.warning("art. %s: duplicate comma %s merged", article, comma)
             commi[comma].extend(_render(paragraph, ""))
         else:
             commi[comma] = _render(paragraph, f"{comma}.")
-    return [
-        make_unit(
-            make_key(article, comma),
-            "comma",
-            "\n".join(lines),
-            article=article,
-            comma=comma,
-            heading=heading,
-        )
+    units = [
+        make_unit(make_key(article, comma), "comma", "\n".join(lines), article=article, comma=comma)
         for comma, lines in commi.items()
     ]
+    return _with_heading(units, raw_heading, " ".join(lead))
 
 
 def _render(element: etree._Element, label: str) -> list[str]:
@@ -126,28 +157,29 @@ def _lettera_label(point: etree._Element) -> str:
         return raw
 
 
-def _flat(article: str, heading: str | None, paragraphs: list[etree._Element]) -> list[ParsedUnit]:
+def _flat(
+    article: str, raw_heading: str, paragraphs: list[etree._Element], runs: RunPolicy
+) -> list[ParsedUnit]:
     raw = " ".join(collapse_whitespace(inline_text(p)) for p in paragraphs)
     raw = _strip_article_prefix(cut_notes(collapse_whitespace(raw)), article)
-    preamble, segments = split_numbered(raw, renumber_tail=article in _RENUMBER_TAIL)
+    preamble, segments = split_numbered(raw, runs=runs)
     if not segments:
         if not raw:
             logger.warning("art. %s has no text", article)
             return []
-        return [make_unit(article, "article", raw, article=article, heading=heading)]
-    if heading is None:
-        heading = clean_heading(preamble)
-    return [
+        unit = make_unit(article, "article", raw, article=article)
+        return _with_heading([unit], raw_heading, "")
+    units = [
         make_unit(
             make_key(article, segment.label),
             "comma",
             f"{segment.label}. {layout_lettere(segment.body.strip())}",
             article=article,
             comma=segment.label,
-            heading=heading,
         )
         for segment in segments
     ]
+    return _with_heading(units, raw_heading, preamble)
 
 
 def _strip_article_prefix(text: str, article: str) -> str:

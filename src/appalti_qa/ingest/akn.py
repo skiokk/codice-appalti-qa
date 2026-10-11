@@ -6,14 +6,14 @@ import hashlib
 import logging
 import re
 from collections.abc import Iterable
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import date
 from pathlib import Path
 
 from lxml import etree
 
 from appalti_qa.ingest.annexes import annex_units
-from appalti_qa.ingest.articles import article_units
+from appalti_qa.ingest.articles import ParsedArticle, article_units
 from appalti_qa.ingest.labels import act_label, short_label
 from appalti_qa.ingest.text import collapse_whitespace, normalize_text, text_hash
 from appalti_qa.ingest.units import ParsedUnit
@@ -56,6 +56,11 @@ class ParsedSnapshot:
     act: ActInfo
     events: list[Event]  # lifecycle of this snapshot, original act included, by date
     units: list[ParsedUnit]  # document order: code body, then allegati; ordinals from 1
+    # Articles of the code body exported with one <paragraph> per comma.
+    structured: frozenset[str] = frozenset()
+    # Flat articles with restarted numbering: their units with the runs read as the next commi
+    # (alignment.align_numbering decides which reading is kept).
+    renumbered: dict[str, list[ParsedUnit]] = field(default_factory=dict)
 
 
 def vigenza_from_filename(path: Path) -> date:
@@ -74,7 +79,8 @@ def parse_snapshot(path: Path) -> ParsedSnapshot:
     act_element = child(root, "act")
     if act_element is None:
         raise ValueError(f"{path.name}: no <act> element")
-    units = _number(_dedupe(_units(act_element)))
+    articles = _articles(act_element)
+    units = number_units(_dedupe([*(u for a in articles for u in a.units), *_annexes(act_element)]))
     return ParsedSnapshot(
         vigenza_date=vigenza_from_filename(path),
         expression_date=_expression_date(root),
@@ -83,6 +89,8 @@ def parse_snapshot(path: Path) -> ParsedSnapshot:
         act=_act_info(root, path),
         events=_events(root),
         units=units,
+        structured=frozenset(a.number for a in articles if a.structured),
+        renumbered={a.number: a.renumbered for a in articles if a.renumbered is not None},
     )
 
 
@@ -101,11 +109,12 @@ def _parse_xml(payload: bytes, path: Path) -> etree._Element:
     return root
 
 
-def _units(act: etree._Element) -> Iterable[ParsedUnit]:
+def _articles(act: etree._Element) -> list[ParsedArticle]:
     body = child(act, "body")
-    if body is not None:
-        for article in body.iter(akn("article")):
-            yield from article_units(article)
+    return [article_units(a) for a in body.iter(akn("article"))] if body is not None else []
+
+
+def _annexes(act: etree._Element) -> Iterable[ParsedUnit]:
     attachments = child(act, "attachments")
     if attachments is not None:
         yield from annex_units(attachments.iter(akn("doc")))
@@ -124,12 +133,15 @@ def _dedupe(units: Iterable[ParsedUnit]) -> list[ParsedUnit]:
             first,
             text=f"{first.text}\n{unit.text}",
             repealed=first.repealed and unit.repealed,
-            amended=first.amended or unit.amended,
+            marked=f"{first.marked or first.text}\n{unit.marked or unit.text}"
+            if first.marked or unit.marked
+            else "",
         )
     return list(merged.values())
 
 
-def _number(units: list[ParsedUnit]) -> list[ParsedUnit]:
+def number_units(units: list[ParsedUnit]) -> list[ParsedUnit]:
+    """The units with ordinals 1, 2, ... in the given order."""
     return [replace(unit, ordinal=index) for index, unit in enumerate(units, start=1)]
 
 

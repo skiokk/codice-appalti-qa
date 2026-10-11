@@ -1,7 +1,11 @@
 """Text normalisation shared by the Akoma Ntoso parser and the versioning step.
 
-Normattiva marks inserted or replaced text with ``((`` ... ``))``. The stored text drops the
-markers; whether a unit carried any is recorded separately (``ParsedUnit.amended``).
+Normattiva marks text inserted or replaced by an amending act with ``((`` ... ``))`` (inside an
+``<ins>`` element, in the flat and in the structured exports alike), a deletion with ``((...))``
+and a repealed comma with a marked note (``((COMMA ABROGATO DAL ...))``). The markers stay in
+the text once an act has added them (later exports occasionally drop some). The stored text
+drops them; the text with its markers is kept separately (``ParsedUnit.marked``) as evidence of
+what amending acts changed (``marked_words``).
 """
 
 from __future__ import annotations
@@ -25,6 +29,68 @@ _REPEAL_RE = re.compile(
 )
 
 
+# Tokens of marked text that are not words: a deletion ("((...))") and a repeal or suppression
+# note ("((COMMA SOPPRESSO DAL ...))"), whose wording Normattiva sometimes rewrites.
+DELETION_MARK = "<soppressione>"
+NOTE_MARK = "<nota>"
+_NOTE_SPAN_RE = re.compile(r"\b(?:ABROGAT[OAIE]|SOPPRESS[OAIE])\b")
+
+Token = tuple[str, bool]  # (lower-cased word, inside a marked span)
+
+
+def marked_words(raw: str) -> list[Token]:
+    """The words of ``raw`` in order, each flagged when it lies inside a ``((...))`` span.
+
+    A deletion span is one ``DELETION_MARK`` token and a repeal note one ``NOTE_MARK`` token. A
+    span left open at the end of the text runs to the end; a ``))`` with no opening marker
+    closes nothing. Parentheses inside a span are matched (``((art. 3 (codice)))``).
+    """
+    tokens: list[Token] = []
+    position = 0
+    for start, end, _ in _scan_spans(raw):
+        tokens.extend((word, False) for word in _WORD_RE.findall(raw[position:start].lower()))
+        content = raw[start:end]
+        words = _WORD_RE.findall(content.lower())
+        if not words:
+            tokens.append((DELETION_MARK, True))
+        elif _NOTE_SPAN_RE.search(content) and content.upper() == content:
+            tokens.append((NOTE_MARK, True))
+        else:
+            tokens.extend((word, True) for word in words)
+        position = end
+    tokens.extend((word, False) for word in _WORD_RE.findall(raw[position:].lower()))
+    return tokens
+
+
+def ends_inside_span(raw: str) -> bool:
+    """True when ``raw`` ends inside a ``((`` span that it does not close."""
+    spans = _scan_spans(raw)
+    return bool(spans) and not spans[-1][2]
+
+
+def _scan_spans(raw: str) -> list[tuple[int, int, bool]]:
+    """(start, end, closed) of the content of every ``((...))`` span."""
+    spans: list[tuple[int, int, bool]] = []
+    position = 0
+    while (start := raw.find("((", position)) >= 0:
+        depth, index, closed = 0, start + 2, False
+        while index < len(raw):
+            if raw.startswith("((", index):
+                break  # a new span opens: this one was not closed
+            if raw[index] == "(":
+                depth += 1
+            elif raw[index] == ")":
+                if depth:
+                    depth -= 1
+                elif raw.startswith("))", index):
+                    closed = True
+                    break
+            index += 1
+        spans.append((start + 2, index, closed))
+        position = index + 2 if closed else index
+    return spans
+
+
 def has_markers(text: str) -> bool:
     """True when the text contains Normattiva's ``((`` / ``))`` modification markers."""
     return _MARKER_RE.search(text) is not None
@@ -44,7 +110,12 @@ def normalize_text(text: str) -> str:
 
     Runs of spaces collapse to one, lines are stripped and empty lines dropped.
     """
-    lines = (_SPACES_RE.sub(" ", line).strip() for line in strip_markers(text).splitlines())
+    return normalize_lines(strip_markers(text))
+
+
+def normalize_lines(text: str) -> str:
+    """Normalise whitespace line by line, markers kept."""
+    lines = (_SPACES_RE.sub(" ", line).strip() for line in text.splitlines())
     return "\n".join(line for line in lines if line)
 
 

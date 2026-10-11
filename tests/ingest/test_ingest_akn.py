@@ -211,8 +211,53 @@ FLAT_ARTICLE = """
 """
 
 
-@pytest.mark.parametrize(("number", "keys"), [("34", 4), ("205", 2)])
-def test_trailing_run_override_is_per_article(number: str, keys: int) -> None:
-    """Only art. 34 renumbers its final "1.", "2." (the structured exports number them on)."""
-    units = article_units(etree.fromstring(FLAT_ARTICLE.format(n=number)))
-    assert [unit.comma for unit in units] == ["1", "2", "3", "4"][:keys]
+@pytest.mark.parametrize("number", ["34", "205"])
+def test_restarted_run_is_parsed_both_ways(number: str) -> None:
+    """A run numbered "1.", "2." again is kept as exported and also read as the next commi;
+    which reading holds is decided against a structured export (alignment)."""
+    article = article_units(etree.fromstring(FLAT_ARTICLE.format(n=number)))
+    assert (article.number, article.structured) == (number, False)
+    assert [unit.comma for unit in article.units] == ["1", "2"]
+    assert "1. In caso di riapertura" in article.units[1].text
+    assert article.renumbered is not None
+    assert [unit.comma for unit in article.renumbered] == ["1", "2", "3", "4"]
+    assert article.renumbered[2].text.startswith("3. In caso di riapertura")
+
+
+def test_structured_articles_have_one_reading(structured: ParsedSnapshot) -> None:
+    assert structured.structured == {"1", "6", "50", "225-bis"}  # 109 has no commi left
+    assert structured.renumbered == {}
+
+
+def test_flat_text_before_comma_1_continues_the_heading() -> None:
+    """Art. 221 in the flat exports: "Governance dei servizi" follows the <heading>."""
+    article = article_units(
+        etree.fromstring(
+            '<article xmlns="http://docs.oasis-open.org/legaldocml/ns/akn/3.0" eId="art_221">'
+            "<num>Art. 221.</num><heading> Indirizzo e monitoraggio presso la Cabina di regia"
+            "</heading><paragraph><content><p> Governance dei servizi 1. La Cabina di regia e' "
+            "istituita. 2. La Cabina di regia coordina.</p></content></paragraph></article>"
+        )
+    )
+    assert [u.key for u in article.units] == ["221/1", "221/2"]
+    heading = "Indirizzo e monitoraggio presso la Cabina di regia. Governance dei servizi"
+    assert {u.heading for u in article.units} == {heading}
+    assert article.units[0].text == "1. La Cabina di regia e' istituita."
+
+
+def test_marked_paragraph_after_the_heading_is_heading_evidence() -> None:
+    """Art. 140 from 2025-05-21: words deleted from the heading leave a "((...))" paragraph."""
+    article = article_units(
+        etree.fromstring(
+            '<article xmlns="http://docs.oasis-open.org/legaldocml/ns/akn/3.0" eId="art_140">'
+            "<num>Articolo 140. </num><heading> Procedure in caso di somma urgenza</heading>"
+            '<paragraph><content><p><ins eId="ins_1">((...))</ins></p></content></paragraph>'
+            '<paragraph eId="art_140__para_1"><num>1.</num><content><p>In circostanze di somma '
+            "urgenza.</p></content></paragraph></article>"
+        )
+    )
+    (unit,) = article.units
+    assert article.structured
+    assert unit.heading == "Procedure in caso di somma urgenza"
+    assert unit.heading_marked == "Procedure in caso di somma urgenza. ((...))"
+    assert unit.text == "1. In circostanze di somma urgenza."

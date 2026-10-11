@@ -1,9 +1,11 @@
+from dataclasses import replace
 from datetime import date
 
 import numpy as np
 import psycopg
 import pytest
 
+from appalti_qa.db import init_schema
 from appalti_qa.ingest import VersionedCorpus, load_corpus
 
 pytestmark = pytest.mark.db
@@ -131,3 +133,30 @@ def test_failed_load_rolls_back(db_conn: psycopg.Connection, fixture_corpus) -> 
         load_corpus(broken, db_conn)
     db_conn.rollback()
     assert db_conn.execute(ALL_VERSIONS).fetchall() == before
+
+
+def test_heading_rows_load_and_the_schema_reapplies(
+    db_url: str, db_conn: psycopg.Connection, fixture_corpus: VersionedCorpus
+) -> None:
+    """A row that only changes the heading passes the change_kind check, also after the schema
+    (which widens that check on older databases) is applied again."""
+    (column,) = db_conn.execute(
+        "SELECT format_type(atttypid, atttypmod) FROM pg_attribute"
+        " WHERE attrelid = 'unit_versions'::regclass AND attname = 'embedding'"
+    ).fetchone()
+    init_schema(db_url, int(column.removeprefix("vector(").rstrip(")")))
+    last = fixture_corpus.versions[-1]
+    renamed = replace(
+        last, heading="Nuova rubrica", valid_from=date(2025, 6, 1), change_kind="heading"
+    )
+    corpus = replace(
+        fixture_corpus,
+        versions=[*fixture_corpus.versions[:-1], replace(last, valid_to=date(2025, 6, 1)), renamed],
+    )
+    load_corpus(corpus, db_conn)
+    rows = db_conn.execute(
+        "SELECT v.change_kind, v.heading FROM unit_versions v JOIN units u ON u.id = v.unit_id"
+        " WHERE u.key = %s ORDER BY v.valid_from",
+        (last.unit_key,),
+    ).fetchall()
+    assert rows[-2:] == [(last.change_kind, last.heading), ("heading", "Nuova rubrica")]

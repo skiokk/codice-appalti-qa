@@ -20,6 +20,7 @@ from appalti_qa.ingest.download import (
 from appalti_qa.ingest.loader import load_corpus
 from appalti_qa.ingest.refine import DEFAULT_MAX_PROBES, refine_snapshots
 from appalti_qa.ingest.versioning import build_versions
+from appalti_qa.keys import sort_key
 
 __all__ = ["cli_download", "cli_ingest", "snapshot_files"]
 
@@ -80,4 +81,12 @@ def cli_ingest(args: argparse.Namespace) -> int:
         f"snapshots, {stats.events} events, {stats.units} units, {stats.versions} versions, "
         f"{stats.embeddings_kept} embeddings kept."
     )
+    repaired = sorted({d.article for d in corpus.numbering if d.renumbered}, key=sort_key)
+    kept = sorted({d.article for d in corpus.numbering if not d.renumbered}, key=sort_key)
+    if repaired or kept:
+        print(
+            "Restarted comma numbering: "
+            f"renumbered as in the structured exports in art. {', '.join(repaired) or '-'}; "
+            f"kept as exported in art. {', '.join(kept) or '-'}."
+        )
     return 0

@@ -37,7 +37,7 @@
 
   <section class="mt-5" aria-labelledby="titolo-versioni">
     <h2 id="titolo-versioni">Versioni nel tempo</h2>
-    <p>Ogni riga indica il periodo in cui il testo è rimasto invariato e l'atto che lo ha modificato.</p>
+    <p>Ogni riga indica il periodo in cui il testo è rimasto invariato e l'atto che lo ha modificato. Se nel frattempo è cambiata solo la rubrica dell'articolo, la nuova rubrica è indicata nelle note.</p>
     {% for unit in histories %}
     <div class="table-responsive mb-4">
       <table class="table">
@@ -56,13 +56,16 @@
             <td>{{ validity(version.valid_from, version.valid_to) }}</td>
             <td>
               {%- if version.changed_by %}{{ version.changed_by.label }}
-              {%- elif version.change_kind == "editorial" %}Modifica redazionale (punteggiatura o suddivisione in commi, nessun atto modificativo)
+              {%- elif version.change_kind == "editorial" %}Modifica redazionale (il testo cambia fuori dalle parti che Normattiva segnala come modificate: punteggiatura, impaginazione, suddivisione in commi, note; nessun atto modificativo)
               {%- elif version.change_kind == "original" %}Testo originario
               {%- else %}Atto modificativo non individuato{% endif -%}
             </td>
             <td>
               {% if version.repealed %}Abrogato{% endif %}
               {% if version.in_force_at(day) %}In vigore al {{ day|data }}{% endif %}
+              {% for change in version.heading_changes %}
+              <p class="mb-0">Rubrica dal {{ change.date|data }}: «{{ change.heading or "nessuna" }}»{% if change.changed_by %} ({{ change.changed_by.label }}){% else %} (variazione redazionale){% endif %}</p>
+              {% endfor %}
             </td>
             <td>
               <details>

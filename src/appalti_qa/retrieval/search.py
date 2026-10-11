@@ -1,7 +1,13 @@
 """Point-in-time retrieval: lexical, semantic and hybrid search, and lookups by reference.
 
-Every function reads the versions in force at a date: `valid_from <= D < valid_to`. Searches skip
+Every function reads the rows in force at a date: `valid_from <= D < valid_to`. Searches skip
 repealed versions; lookups and history return them, since "abrogato" is itself an answer.
+
+A row of `unit_versions` is one text under one heading. When only the article heading changes,
+ingestion closes the row and opens one with the same text and `change_kind = 'heading'`, so the
+heading, the full-text vector and the embedding of a row are those in force over its interval.
+Such rows continue the text version before them: hits report the validity of the text, and
+`history` folds them into that version as heading changes.
 """
 
 from __future__ import annotations
@@ -20,7 +26,7 @@ from psycopg.rows import class_row, dict_row
 from appalti_qa.config import RetrievalMode, Settings, get_settings
 from appalti_qa.db import get_pool
 from appalti_qa.keys import is_valid_key
-from appalti_qa.models import Event, Hit, UnitVersion
+from appalti_qa.models import Event, HeadingChange, Hit, UnitVersion
 from appalti_qa.retrieval.embedding import Embedder, get_embedder
 from appalti_qa.retrieval.fusion import reciprocal_rank_fusion
 from appalti_qa.retrieval.refs import extract_refs
@@ -39,7 +45,7 @@ _MATCHES_REFS = """EXISTS (
     WHERE u.key = r.ref OR starts_with(u.key, r.ref || '/') OR starts_with(r.ref, u.key || '/'))"""
 _FROM = "FROM unit_versions v JOIN units u ON u.id = v.unit_id"
 _COLUMNS = """v.id AS version_id, v.unit_id, u.key, u.ordinal,
-    coalesce(v.heading, u.heading) AS heading, v.text, v.valid_from, v.valid_to"""
+    v.heading, v.text, v.valid_from, v.valid_to"""
 
 # Natural-language questions rarely contain every term of a unit, so the AND query produced by
 # websearch_to_tsquery is relaxed to OR and ts_rank_cd is weighted by the share of query terms
@@ -79,9 +85,14 @@ _AMENDMENTS_SQL = """
     WHERE v.unit_id = ANY(%(units)s) AND v.valid_from <= %(at)s
     ORDER BY e.event_date, e.id
 """
+_ROWS_SQL = """
+    SELECT id, unit_id, valid_from, valid_to, change_kind FROM unit_versions
+    WHERE unit_id = ANY(%(units)s)
+    ORDER BY unit_id, valid_from
+"""
 _HISTORY_SQL = f"""
-    SELECT v.id, u.key AS unit_key, u.kind, u.article, u.comma, u.allegato,
-        coalesce(v.heading, u.heading) AS heading, v.text, v.text_hash, v.valid_from,
+    SELECT v.id, v.unit_id, u.key AS unit_key, u.kind, u.article, u.comma, u.allegato,
+        v.heading, v.text, v.text_hash, v.valid_from,
         v.valid_to, v.change_kind, v.repealed, e.id AS event_id, e.event_date, e.kind AS event_kind,
         e.amending_urn, e.amending_label
     {_FROM} LEFT JOIN events e ON e.id = v.changed_by_event
@@ -155,12 +166,36 @@ def lookup(
 
 
 def history(ref: str, *, conn: psycopg.Connection | None = None) -> list[UnitVersion]:
-    """Every version of the units matching `ref`, by document order then date."""
+    """Every version of the units matching `ref`, by document order then date.
+
+    A version's `heading` is the one in force when it starts; rows that only change the heading
+    are folded into the version as `heading_changes`.
+    """
     if not is_valid_key(ref):
         return []
     with _session(conn) as c, c.cursor(row_factory=dict_row) as cur:
         rows = cur.execute(_HISTORY_SQL, {"refs": [ref]}).fetchall()
-    return [_unit_version(row) for row in rows]
+    versions: list[UnitVersion] = []
+    previous: dict | None = None
+    for row in rows:
+        if previous is not None and _continues_text(previous, row):
+            version = versions[-1]
+            change = HeadingChange(
+                date=row["valid_from"], heading=row["heading"], changed_by=_event(row)
+            )
+            versions[-1] = version.model_copy(
+                update={
+                    "valid_to": row["valid_to"],
+                    "text": row["text"],
+                    "text_hash": row["text_hash"],
+                    "repealed": row["repealed"],
+                    "heading_changes": [*version.heading_changes, change],
+                }
+            )
+        else:
+            versions.append(_unit_version(row))
+        previous = row
+    return versions
 
 
 def available_range(*, conn: psycopg.Connection | None = None) -> tuple[date, date] | None:
@@ -254,37 +289,69 @@ def _hybrid(
 
 def _to_hits(conn: psycopg.Connection, candidates: list[_Candidate], at_date: date) -> list[Hit]:
     amendments: dict[int, list[Event]] = {}
+    spans: dict[int, tuple[date, date | None]] = {}
     if candidates:
+        units = list({c.unit_id for c in candidates})
         with conn.cursor(row_factory=dict_row) as cur:
-            cur.execute(_AMENDMENTS_SQL, {"units": [c.unit_id for c in candidates], "at": at_date})
+            cur.execute(_AMENDMENTS_SQL, {"units": units, "at": at_date})
             for row in cur:
                 amendments.setdefault(row.pop("unit_id"), []).append(Event(**row))
-    return [
-        Hit(
-            unit_key=c.key,
-            version_id=c.version_id,
-            heading=c.heading,
-            text=c.text,
-            score=c.score,
-            valid_from=c.valid_from,
-            valid_to=c.valid_to,
-            normattiva_url=normattiva_url(c.key, at_date),
-            modified_by=amendments.get(c.unit_id, []),
+            spans = _text_spans(cur.execute(_ROWS_SQL, {"units": units}).fetchall())
+    hits = []
+    for c in candidates:
+        valid_from, valid_to = spans.get(c.version_id, (c.valid_from, c.valid_to))
+        hits.append(
+            Hit(
+                unit_key=c.key,
+                version_id=c.version_id,
+                heading=c.heading,
+                text=c.text,
+                score=c.score,
+                valid_from=valid_from,
+                valid_to=valid_to,
+                normattiva_url=normattiva_url(c.key, at_date),
+                modified_by=amendments.get(c.unit_id, []),
+            )
         )
-        for c in candidates
-    ]
+    return hits
+
+
+def _continues_text(previous: dict, row: dict) -> bool:
+    """True for a row that only changes the heading of the text version of `previous`."""
+    return (
+        row["change_kind"] == "heading"
+        and row["unit_id"] == previous["unit_id"]
+        and row["valid_from"] == previous["valid_to"]
+    )
+
+
+def _text_spans(rows: list[dict]) -> dict[int, tuple[date, date | None]]:
+    """Row id -> validity of the text version the row belongs to (rows sorted by unit, date)."""
+    spans: dict[int, tuple[date, date | None]] = {}
+    group: list[dict] = []
+    for row in [*rows, None]:
+        if row is not None and group and _continues_text(group[-1], row):
+            group.append(row)
+            continue
+        for member in group:
+            spans[member["id"]] = (group[0]["valid_from"], group[-1]["valid_to"])
+        group = [row] if row is not None else []
+    return spans
+
+
+def _event(row: dict) -> Event | None:
+    if row["event_id"] is None:
+        return None
+    return Event(
+        id=row["event_id"],
+        date=row["event_date"],
+        kind=row["event_kind"],
+        amending_urn=row["amending_urn"],
+        label=row["amending_label"],
+    )
 
 
 def _unit_version(row: dict) -> UnitVersion:
-    event = None
-    if row["event_id"] is not None:
-        event = Event(
-            id=row["event_id"],
-            date=row["event_date"],
-            kind=row["event_kind"],
-            amending_urn=row["amending_urn"],
-            label=row["amending_label"],
-        )
     return UnitVersion(
         id=row["id"],
         unit_key=row["unit_key"],
@@ -297,7 +364,7 @@ def _unit_version(row: dict) -> UnitVersion:
         text_hash=row["text_hash"],
         valid_from=row["valid_from"],
         valid_to=row["valid_to"],
-        changed_by=event,
+        changed_by=_event(row),
         change_kind=row["change_kind"],
         repealed=row["repealed"],
     )

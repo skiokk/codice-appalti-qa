@@ -11,16 +11,24 @@ found inside running text. A label opens a new unit only when
 
 References inside the text ("ai sensi del comma 2.", "lettere c), d) ed e)") fail one of the two
 checks and stay part of the running text, and so does anything quoted between « and » (amending
-provisions quote whole articles of other acts). Three defects of the flat exports are repaired:
+provisions quote whole articles of other acts).
 
-* a comma misnumbered "1." after a full stop is accepted under the expected number when the
-  next label carries on from it ("7. ... 1. ... 9." reads as 7, 8, 9);
-* with ``renumber_tail=True``, the last commi of an article numbered from "1." again
-  ("4. ... 1. ... 2." at the end of art. 34) continue the article's numbering when they run
-  without gaps to the end of the text ("1.", "2." read as 5, 6);
-* an article replaced as a whole is exported as the old text followed by the new one, both
-  numbered from "1."; a second "1." followed by "2." whose opening words match the first comma
-  starts over, so only the last (current) copy is kept.
+Some flat exports number a few commi from "1." again inside an article ("8. ... 1. ... 2. ...
+11." in art. 41, "4. ... 1. ... 2." at the end of art. 34). ``runs`` says how such a *restarted
+run* (labels "1.", "2.", ... after sentence punctuation) is read:
+
+* ``"keep"``: as exported, inside the previous unit;
+* ``"single"`` (default, used for the allegati): only a lone "1." whose next label carries on
+  from it takes the expected number ("7. ... 1. ... 9." reads as 7, 8, 9);
+* ``"continue"``: every run continues the numbering when the label after it carries on from it
+  or it ends the text ("8. 1. 2. 11." reads as 8, 9, 10, 11).
+
+The code body is split both with ``"keep"`` and ``"continue"``; ``alignment`` decides which
+reading holds against the structured exports. An article replaced as a whole is exported as the
+old text followed by the new one, both numbered from "1."; a second "1." followed by "2." whose
+opening words match the first comma starts over, so only the last (current) copy is kept. A unit
+that starts inside a ``((...))`` span opened by the previous one (commi inserted together) gets
+an opening marker, so that its text counts as marked.
 """
 
 from __future__ import annotations
@@ -28,8 +36,9 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from difflib import SequenceMatcher
+from typing import Literal
 
-from appalti_qa.ingest.text import collapse_whitespace, strip_markers
+from appalti_qa.ingest.text import collapse_whitespace, ends_inside_span, strip_markers
 from appalti_qa.keys import LATIN_SUFFIXES
 
 _SUFFIXES = "|".join(sorted(LATIN_SUFFIXES, key=len, reverse=True))
@@ -46,6 +55,9 @@ _COPY_PROBE_CHARS = 200
 _COPY_MIN_SIMILARITY = 0.6
 
 Value = tuple[int, int]  # (number, rank of the Latin suffix: 0 none, 1 bis, 2 ter, ...)
+# How a run of labels numbered from "1." again inside the text is read: kept inside the
+# previous unit as exported, a single misnumbered "1." repaired, or every run renumbered.
+RunPolicy = Literal["keep", "single", "continue"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -53,7 +65,9 @@ class Segment:
     """A numbered unit found in flat text: its canonical label and its text after the label."""
 
     label: str  # "1", "2-bis"
-    body: str  # raw text after the label; markers kept, an opening "((" included
+    # Raw text after the label, markers kept: an opening "((" included, and added when the
+    # unit starts inside a span opened by an earlier one.
+    body: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -126,21 +140,32 @@ def _starts_copy(text: str, first: _Label, label: _Label, following: _Label | No
     return similarity >= _COPY_MIN_SIMILARITY
 
 
-def _is_trailing_run(labels: list[_Label]) -> bool:
-    """True for "1.", "2.", ... (at least two) that are the last labels of the text."""
-    return len(labels) >= 2 and all(
-        label.value == (number, 0) for number, label in enumerate(labels, start=1)
-    )
+def _restarted_run(strong: list[_Label], start: int, previous: Value) -> list[_Label]:
+    """The labels "1.", "2.", ... from ``strong[start]`` that read as the next commi.
+
+    The run is accepted when, renumbered after ``previous``, it is followed by a label that
+    carries on from it or ends the text; the longest such run wins. Empty when none does.
+    """
+    length = 0
+    while start + length < len(strong) and strong[start + length].value == (length + 1, 0):
+        if strong[start + length].boundary not in _SENTENCE_END:
+            break
+        length += 1
+    for size in range(length, 0, -1):
+        after = start + size
+        if after == len(strong) or _continues((previous[0] + size, 0), strong[after].value):
+            return strong[start:after]
+    return []
 
 
 def split_numbered(
-    text: str, *, restart: bool = False, renumber_tail: bool = False
+    text: str, *, restart: bool = False, runs: RunPolicy = "single"
 ) -> tuple[str, list[Segment]]:
     """Split flat text at its numbered labels; returns (text before "1.", segments).
 
     With ``restart=True`` every "1." after a punctuation mark starts a new list (annexes that
-    number their parts from 1 again); otherwise the numbering must run on. ``renumber_tail``
-    enables the repair of a final run of commi numbered from "1." again (see above).
+    number their parts from 1 again); otherwise the numbering must run on. ``runs`` says how a
+    run of labels numbered from "1." again inside the text is read (see above).
     """
     quoted = _quoted(text)
     labels = [
@@ -153,27 +178,39 @@ def split_numbered(
         return text, []
     accepted: list[tuple[_Label, Value]] = [(labels[first_index], (1, 0))]
     strong = [label for label in labels[first_index + 1 :] if _may_open(label, restart)]
-    for index, label in enumerate(strong):
-        previous = accepted[-1][1]
+    index = 0
+    while index < len(strong):
+        label, previous = strong[index], accepted[-1][1]
         following = strong[index + 1] if index + 1 < len(strong) else None
+        index += 1
         if _continues(previous, label.value) or (restart and label.value == (1, 0)):
             accepted.append((label, label.value))
         elif label.boundary not in _SENTENCE_END or label.value != (1, 0):
             continue
         elif _starts_copy(text, accepted[0][0], label, following):
             accepted = [(label, (1, 0))]
-        elif following is not None and _continues((previous[0] + 1, 0), following.value):
-            accepted.append((label, (previous[0] + 1, 0)))
-        elif renumber_tail and _is_trailing_run(strong[index:]):
-            run = strong[index:]
+        elif runs == "continue" and (run := _restarted_run(strong, index - 1, previous)):
             accepted.extend((item, (previous[0] + offset, 0)) for offset, item in enumerate(run, 1))
-            break
+            index += len(run) - 1
+        elif (
+            runs == "single"
+            and following is not None
+            and _continues((previous[0] + 1, 0), following.value)
+        ):
+            accepted.append((label, (previous[0] + 1, 0)))
+    preamble = text[: labels[first_index].match.start()]
     segments = []
+    inside = ends_inside_span(preamble)
     for index, (label, value) in enumerate(accepted):
         end = accepted[index + 1][0].match.start() if index + 1 < len(accepted) else len(text)
         body = (label.match["open"] or "") + text[label.match.end() : end]
+        if inside and not label.match["open"]:
+            body = (
+                "((" + body
+            )  # the unit opens inside a marked span (e.g. "((4-bis. ... 4-ter. ...))")
         segments.append(Segment(_label_text(value), body))
-    return text[: labels[first_index].match.start()], segments
+        inside = ends_inside_span(body)
+    return preamble, segments
 
 
 def _letter_index(letters: str) -> int:

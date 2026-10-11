@@ -52,8 +52,11 @@ Italia, plus a JSON API. `create_app()` works with no arguments (the Docker imag
   (a proxy's 502 or 504, a network error, a timeout) are reported by `app.js`, which writes an
   Italian alert into the target and resets `aria-busy`, the loading indicator and the submit
   button.
-- The version history on `/norma/{key}` names the act that introduced each version; versions
-  that only changed punctuation or the split into commi are labelled "Modifica redazionale".
+- The version history on `/norma/{key}` names the act that introduced each version; editorial
+  versions (changes outside Normattiva's amendment markers: punctuation, layout, split into commi,
+  reworded notes) are labelled "Modifica redazionale", and a heading that changed while the text
+  did not is listed in the notes of that version with its date and act. The heading above each
+  text in force is the one in force at the chosen date.
 
 ## Security and accessibility
 

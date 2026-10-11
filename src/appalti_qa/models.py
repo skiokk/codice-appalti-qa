@@ -10,9 +10,11 @@ from pydantic import BaseModel, Field
 from appalti_qa.keys import key_label
 
 UnitKind = Literal["article", "comma", "allegato_block"]
-# original: first snapshot; amendment: the words changed; editorial: only punctuation,
-# capitalisation or the split into commi changed (no amending act is credited).
-ChangeKind = Literal["original", "amendment", "editorial"]
+# original: first snapshot; amendment: the words changed where Normattiva marks an amendment;
+# editorial: the words, punctuation or split into commi changed outside any amendment marker
+# (no act credited); heading: only the article heading changed, the text is the previous
+# row's (an act is credited only when the new heading is marked as amended).
+ChangeKind = Literal["original", "amendment", "editorial", "heading"]
 
 
 class Event(BaseModel):
@@ -25,8 +27,20 @@ class Event(BaseModel):
     label: str
 
 
+class HeadingChange(BaseModel):
+    """A new article heading taking effect while the text of a version stays the same."""
+
+    date: date
+    heading: str | None = None
+    changed_by: Event | None = None  # the amending act, when Normattiva marks the new heading
+
+
 class UnitVersion(BaseModel):
-    """The text of one unit over one validity interval [valid_from, valid_to)."""
+    """The text of one unit over one validity interval [valid_from, valid_to).
+
+    ``heading`` is the heading in force on ``valid_from``; later headings of the same text are
+    in ``heading_changes``.
+    """
 
     id: int | None = None
     unit_key: str
@@ -42,13 +56,26 @@ class UnitVersion(BaseModel):
     changed_by: Event | None = None
     change_kind: ChangeKind = "amendment"
     repealed: bool = False
+    heading_changes: list[HeadingChange] = Field(default_factory=list)
 
     def in_force_at(self, day: date) -> bool:
         return self.valid_from <= day and (self.valid_to is None or self.valid_to > day)
 
+    def heading_at(self, day: date) -> str | None:
+        """The heading in force on ``day`` (the first one before the version starts)."""
+        heading = self.heading
+        for change in self.heading_changes:
+            if change.date <= day:
+                heading = change.heading
+        return heading
+
 
 class Hit(BaseModel):
-    """A retrieved unit version, ready to be shown and passed to the LLM as a source."""
+    """A retrieved unit version, ready to be shown and passed to the LLM as a source.
+
+    ``heading`` is the heading in force at the query date; ``valid_from`` and ``valid_to`` are
+    those of the text, which a change of the heading alone does not interrupt.
+    """
 
     unit_key: str
     version_id: int

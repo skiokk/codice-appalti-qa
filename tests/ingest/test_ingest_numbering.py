@@ -129,16 +129,63 @@ def test_trailing_run_renumbered_from_one_continues_the_article() -> None:
         "dinamico di acquisizione."
     )
     assert labels(text) == ["1", "2", "3", "4"]  # the default keeps them inside comma 4
-    _, segments = split_numbered(text, renumber_tail=True)
+    assert [s.label for s in split_numbered(text, runs="keep")[1]] == ["1", "2", "3", "4"]
+    _, segments = split_numbered(text, runs="continue")
     assert [s.label for s in segments] == ["1", "2", "3", "4", "5", "6"]
     assert segments[4].body.strip().startswith("In caso di riapertura")
     assert segments[3].body.strip().endswith("b) comunicano agli offerenti.")
 
 
-def test_trailing_run_needs_two_labels_and_no_gaps() -> None:
-    lone = "1. Uno. 2. Due. 1. Ripete."
-    assert labels(lone) == ["1", "2"]
-    gapped = "1. Uno. 2. Due. 1. Ripete. 3. Salta."
-    _, segments = split_numbered(gapped, renumber_tail=True)
-    assert [s.label for s in segments] == ["1", "2", "3"]
-    assert "1. Ripete." in segments[1].body
+ART_41 = (
+    "7. Il progetto definitivo individua i lavori. 8. Il progetto esecutivo sviluppa i "
+    "dettagli. 1. In caso di affidamento esterno di entrambi i livelli di progettazione, l'avvio "
+    "della progettazione esecutiva e' condizionato. 2. Gli oneri della progettazione gravano "
+    "sulle disponibilita' finanziarie della stazione appaltante. 11. Le spese strumentali sono a "
+    "carico delle risorse iscritte. 12. La progettazione di servizi e forniture e' articolata in "
+    "un unico livello. 13. Per i contratti relativi a lavori, servizi e forniture, il costo del "
+    "lavoro e' determinato annualmente."
+)
+
+
+def test_restarted_run_in_the_middle_continues_the_numbering() -> None:
+    """Art. 41 in the flat exports up to 2024: commi 9 and 10 are numbered "1." and "2."."""
+    _, exported = split_numbered(f"1. Uno. 2. Due. 3. Tre. 4. Q. 5. C. 6. S. {ART_41}", runs="keep")
+    assert [s.label for s in exported][-1] == "8"
+    assert "13. Per i contratti" in exported[-1].body
+    _, renumbered = split_numbered(
+        f"1. Uno. 2. Due. 3. Tre. 4. Q. 5. C. 6. S. {ART_41}", runs="continue"
+    )
+    assert [s.label for s in renumbered][6:] == ["7", "8", "9", "10", "11", "12", "13"]
+    assert renumbered[8].body.strip().startswith("In caso di affidamento esterno")
+    assert renumbered[12].body.strip().startswith("Per i contratti relativi a lavori")
+
+
+def test_restarted_run_must_lead_back_into_the_numbering() -> None:
+    """Art. 205: "1.", "2." after comma 5 that nothing continues stay quoted inside comma 5,
+    unless they end the text; a run followed by a gap is never renumbered."""
+    gapped = (
+        "1. Il collegio consultivo tecnico e' costituito presso ogni stazione appaltante. "
+        "2. Le parti possono sostituire l'articolo con il seguente: 1. Il giudice decide. "
+        "2. La sentenza e' appellabile. 7. Salta."
+    )
+    for runs in ("keep", "single", "continue"):
+        _, segments = split_numbered(gapped, runs=runs)
+        assert [s.label for s in segments] == ["1", "2"], runs
+        assert "1. Il giudice decide." in segments[1].body
+
+
+def test_single_misnumbered_comma_is_repaired_by_default() -> None:
+    text = "1. Uno. 2. Due. 1. Tre. 4. Quattro."
+    assert labels(text) == ["1", "2", "3", "4"]
+    assert [s.label for s in split_numbered(text, runs="keep")[1]] == ["1", "2"]
+    assert [s.label for s in split_numbered(text, runs="continue")[1]] == ["1", "2", "3", "4"]
+
+
+def test_units_opening_inside_a_marked_span_are_marked() -> None:
+    """D.Lgs. 209/2024 inserted commi 4-bis and 4-ter of art. 116 as one "((...))" span."""
+    text = "4. Il collaudo. ((4-bis. Il collaudatore statico. 4-ter. La segreteria.)) 5. Fine."
+    _, segments = split_numbered(f"1. A. 2. B. 3. C. {text}")
+    bodies = {s.label: s.body for s in segments}
+    assert bodies["4-bis"].startswith("((")
+    assert bodies["4-ter"].startswith("((") and "La segreteria" in bodies["4-ter"]
+    assert not bodies["5"].startswith("((")

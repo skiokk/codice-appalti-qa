@@ -90,7 +90,7 @@ and a page in the app.
 explicit (`bozza` / `verificata` / `corretta`), and the results page shows users the system's
 measured limits.
 
-## 7. Versions take effect on the first day Normattiva serves them
+## 7. Versions take effect on the first day Normattiva serves them, and are judged on its markers
 
 **Context.** The lifecycle of a Normattiva export lists the amending acts by *publication* date,
 and the downloader requests the text in force on each of those dates. Most amendments take effect
@@ -109,18 +109,34 @@ days by bisection until the first day of each new content is known; a probe that
 both ends is an intermediate version and both halves are searched. Only boundary snapshots are
 kept, named by that first day, and `refined.json` records what has been verified so later runs
 do not probe again. Versioning uses the file date as `valid_from` and only logs disagreements
-with the FRBRExpression date. A change is credited to the amending act whose lifecycle event is
-the latest one dated on or before `valid_from` in the lifecycle of the export that introduced
-it. A difference made only of punctuation or capitalisation, or of how an article's words are
-split into commi, is an `editorial` version (`unit_versions.change_kind`) credited to no act, and
-a change of the article heading alone updates the heading without a new version.
+with the FRBRExpression date.
+
+What changed is judged on Normattiva's own evidence. A change of words counts as an `amendment`
+only when it touches the text the export marks as amended (`((...))` inside `<ins>`, deletion
+markers, repeal notes) or the unit becomes repealed; it is credited to the amending act whose
+lifecycle event is the latest one dated on or before `valid_from` in the lifecycle of the export
+that introduced it. Any other difference (punctuation or capitalisation, a different split into
+commi, a reworded repeal note, words an export dropped or duplicated, table cells in another
+order) is an `editorial` version (`unit_versions.change_kind`) credited to no act. A change of the
+article heading alone is not a new version of the text: it opens a `heading` row with the same
+text and the new heading, credited only when the new heading is marked, so headings, full-text
+vectors and embeddings are those in force at every date. The comma numbering of the flat exports,
+which restart it from 1 in a few articles, is taken from the structured exports when the texts
+match (word-sequence similarity of at least 0.5), and kept as exported otherwise.
 
 **Consequences.** Every version is dated to the day Normattiva starts serving it (20 boundaries
 from 2023-04-01 to 2026-08-26 as of 2026-10-11, found with 84 probes), at the cost of a few dozen
 requests (2 seconds apart) when new amendments appear; a probe cap bounds a run and the gaps it
 leaves are logged, recorded and resumed by the next run. The search assumes the text
-does not change and change back between two equal probes. Crediting is still per change date,
-not per comma: when two acts take effect on the same day, or an act with a vacatio legis takes
-effect after another act published later, the latest-published act is credited and the doubt is
-logged; crediting individual commi would need Normattiva's per-article update notes. Amendments
-that only rename an article are not versioned.
+does not change and change back between two equal probes. On the corpus the rules give 2,593
+original, 589 amended and 31 editorial versions and 25 heading rows; the earlier rules, which
+credited any change of words and repaired the numbering of art. 34 only, gave 2,575, 630 and 10
+(details in `docs/modules/ingest.md`). Commi 41/9-41/15 and 62/8-62/18 now exist from
+2023-04-01 instead of appearing on 2024-12-28 as 20 amendments of D.L. 201/2024. The marker rule
+is only as reliable as the markers: an unmarked change made by an act is editorial, and marked
+text that differs only between the flat and the structured export (11 units on 2025-03-15,
+credited to D.L. 25/2025, several of them likely of this kind) is an amendment. Crediting is still
+per change date, not per comma: when two acts take effect on the same day, or an act with a
+vacatio legis takes effect after another act published later, the latest-published act is
+credited and the doubt is logged; crediting individual commi would need Normattiva's per-article
+update notes.

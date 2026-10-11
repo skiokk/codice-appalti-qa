@@ -120,13 +120,55 @@ def test_layout_changes_do_not_create_versions() -> None:
     assert corpus.versions[0].text_hash == text_hash(structured.text)
 
 
-def test_heading_change_alone_updates_the_heading() -> None:
-    before = comma("1/1", "1. Testo.", heading="Vecchia rubrica")
-    after = comma("1/1", "1. Testo.", heading="Nuova rubrica")
+def test_heading_change_alone_opens_a_heading_row() -> None:
+    """Art. 221 shape: the heading changes while no comma does. Older rows keep the old heading
+    (their passage does not change), the text version is not split into an amendment."""
+    commi = [
+        comma("221/1", "1. Uno.", "Cabina di regia"),
+        comma("221/2", "2. Due.", "Cabina di regia"),
+    ]
+    renamed = [replace(unit, heading="Cabina di regia. Governance") for unit in commi]
+    corpus = build_versions(
+        [
+            snapshot(D1, commi),
+            snapshot(D2, renamed, events=[ORIGINAL, amendment(D2, 25)]),
+            snapshot(D3, renamed),
+        ]
+    )
+    rows = [
+        (v.unit_key, v.valid_from, v.valid_to, v.change_kind, v.heading) for v in corpus.versions
+    ]
+    assert rows == [
+        ("221/1", D1, D2, "original", "Cabina di regia"),
+        ("221/1", D2, None, "heading", "Cabina di regia. Governance"),
+        ("221/2", D1, D2, "original", "Cabina di regia"),
+        ("221/2", D2, None, "heading", "Cabina di regia. Governance"),
+    ]
+    assert all(v.changed_by is None for v in corpus.versions)  # the new heading is not marked
+    assert corpus.versions[0].text == corpus.versions[1].text
+    assert [s.vigenza_date for s, _ in corpus.snapshots] == [D1, D2]
+
+
+def test_marked_heading_change_is_credited() -> None:
+    before = comma("216/1", "1. Testo.", heading="Pareri obbligatori")
+    after = replace(
+        before,
+        heading="Pareri e determinazioni obbligatorie",
+        heading_marked="((Pareri e determinazioni obbligatorie))",
+    )
+    corpus = build_versions(
+        [snapshot(D1, [before]), snapshot(D2, [after], events=[ORIGINAL, amendment(D2, 209)])]
+    )
+    assert versions_of(corpus, "216/1") == [(D1, D2, None, False), (D2, None, "D.L. n. 209", False)]
+    assert corpus.versions[1].change_kind == "heading"
+
+
+def test_heading_rewritten_without_new_words_is_layout() -> None:
+    before = comma("1/1", "1. Testo.", heading="Rubrica  dell'articolo")
+    after = comma("1/1", "1. Testo.", heading="Rubrica dell\u2019articolo.")
     corpus = build_versions([snapshot(D1, [before]), snapshot(D2, [after])])
-    assert versions_of(corpus, "1/1") == [(D1, None, None, False)]
-    assert corpus.versions[0].heading == "Nuova rubrica"
-    assert [s.vigenza_date for s, _ in corpus.snapshots] == [D1, D2]  # still a distinct text
+    assert [v.change_kind for v in corpus.versions] == ["original"]
+    assert corpus.versions[0].heading == "Rubrica dell\u2019articolo."  # latest rendering
 
 
 def test_quotes_and_accents_are_layout() -> None:
@@ -139,7 +181,7 @@ def test_quotes_and_accents_are_layout() -> None:
 def test_punctuation_only_changes_are_editorial() -> None:
     before = comma("1/1", "1. Le stazioni appaltanti, ove possibile, provvedono")
     after = comma("1/1", "1. Le stazioni appaltanti ove possibile provvedono;")
-    amended = comma("1/1", "1. Le stazioni appaltanti provvedono;")
+    amended = comma("1/1", "1. Le stazioni appaltanti ((...)) provvedono;")
     corpus = build_versions(
         [
             snapshot(D1, [before]),
@@ -182,9 +224,9 @@ def test_commi_split_differently_are_editorial() -> None:
             "15. Se la procedura e' congiunta in parte rispondono per quella parte.\n"
             "Le stazioni scelgono il risultato.",
         ),
-        comma("62/16", "16. Comma nuovo."),
+        comma("62/16", "((16. Comma nuovo.))"),
     ]
-    amended = [*structured[:2], comma("62/16", "16. Comma nuovo e modificato.")]
+    amended = [*structured[:2], comma("62/16", "16. Comma nuovo ((e modificato)).")]
     corpus = build_versions(
         [
             snapshot(D1, flat),
@@ -214,7 +256,7 @@ def test_files_with_the_same_text_are_skipped() -> None:
         sha256="b" * 64,
         events=[ORIGINAL, amendment(date(2024, 2, 1), 2)],
     )
-    changed = snapshot(D3, [comma("1/1", "1. Due.")], events=[ORIGINAL, amendment(D3, 3)])
+    changed = snapshot(D3, [comma("1/1", "1. ((Due.))")], events=[ORIGINAL, amendment(D3, 3)])
     corpus = build_versions([changed, restamped, original])
     assert [(s.vigenza_date, effective) for s, effective in corpus.snapshots] == [
         (D1, D1),
@@ -238,13 +280,13 @@ def test_distinct_exports_sharing_an_expression_date(caplog) -> None:
     )
     second = snapshot(
         date(2023, 9, 20),
-        [comma("1/1", "1. Uno modificato."), comma("1/2", "2. Due.")],
+        [comma("1/1", "1. Uno ((modificato))."), comma("1/2", "2. Due.")],
         expression=stale,
         events=[ORIGINAL, l87, dl124],
     )
     third = snapshot(
         date(2023, 9, 30),
-        [comma("1/1", "1. Uno modificato."), comma("1/2", "2. Due modificato.")],
+        [comma("1/1", "1. Uno ((modificato))."), comma("1/2", "2. Due ((modificato)).")],
         expression=stale,
         events=[ORIGINAL, l87, dl124, dl132],
     )
@@ -266,12 +308,12 @@ def test_changed_by_is_the_latest_act_on_or_before_valid_from(caplog) -> None:
     corpus = build_versions(
         [
             snapshot(D1, [comma("1/1", "1. Uno.")]),
-            snapshot(effective, [comma("1/1", "1. Due.")], events=[ORIGINAL, law]),
+            snapshot(effective, [comma("1/1", "1. ((Due.))")], events=[ORIGINAL, law]),
         ]
     )
     assert versions_of(corpus, "1/1")[-1] == (effective, None, "D.L. n. 34", False)
 
-    later = snapshot(date(2026, 5, 1), [comma("1/1", "1. Tre.")], events=[ORIGINAL, law])
+    later = snapshot(date(2026, 5, 1), [comma("1/1", "1. ((Tre.))")], events=[ORIGINAL, law])
     with caplog.at_level(logging.WARNING, logger="appalti_qa.ingest.versioning"):
         corpus = build_versions([*(s for s, _ in corpus.snapshots), later])
     assert versions_of(corpus, "1/1")[-1][2] == "D.L. n. 34"
@@ -282,8 +324,8 @@ def test_changed_by_uses_the_lifecycle_of_the_introducing_snapshot() -> None:
     older, newer = amendment(date(2024, 2, 1), 7), amendment(D2, 9)
     first = snapshot(D1, [comma("1/1", "1. Uno.")])
     # The file requested on D2 does not include the act published that day yet.
-    second = snapshot(D2, [comma("1/1", "1. Due.")], events=[ORIGINAL, older])
-    third = snapshot(D3, [comma("1/1", "1. Tre.")], events=[ORIGINAL, older, newer])
+    second = snapshot(D2, [comma("1/1", "1. ((Due.))")], events=[ORIGINAL, older])
+    third = snapshot(D3, [comma("1/1", "1. ((Tre.))")], events=[ORIGINAL, older, newer])
     corpus = build_versions([first, second, third])
     assert [v[2] for v in versions_of(corpus, "1/1")] == [None, "D.L. n. 7", "D.L. n. 9"]
     assert [event.label for event in corpus.events] == [
@@ -298,7 +340,7 @@ def test_changed_by_prefers_the_event_on_the_effective_date() -> None:
     corpus = build_versions(
         [
             snapshot(D1, [comma("1/1", "1. Uno.")]),
-            snapshot(D2, [comma("1/1", "1. Due.")], events=[ORIGINAL, same_day, before]),
+            snapshot(D2, [comma("1/1", "1. ((Due.))")], events=[ORIGINAL, same_day, before]),
         ]
     )
     assert versions_of(corpus, "1/1")[-1][2] == "D.L. n. 3"
@@ -366,3 +408,75 @@ def test_fixture_versions_do_not_overlap(fixture_corpus: VersionedCorpus) -> Non
         for earlier, later in pairwise(versions):
             assert earlier.valid_to is not None and earlier.valid_to <= later.valid_from
         assert all(v.valid_to is None or v.valid_to > v.valid_from for v in versions)
+
+
+def kinds(corpus: VersionedCorpus, key: str) -> list[tuple[str, str | None]]:
+    return [
+        (v.change_kind, v.changed_by.label if v.changed_by else None)
+        for v in corpus.versions
+        if v.unit_key == key
+    ]
+
+
+@pytest.mark.parametrize(
+    ("before", "after", "expected"),
+    [
+        # Words inserted or replaced inside "((...))": an amendment.
+        ("1. Entro trenta giorni.", "1. Entro ((sessanta)) giorni.", "amendment"),
+        ("1. Uno. Due.", "1. Uno. ((...)) ", "amendment"),  # a deletion marker
+        ("1. Uno ((tre)) due.", "1. Uno ((quattro)) due.", "amendment"),
+        ("1. Uno.", "1. COMMA ABROGATO DAL D.L. N. 9.", "amendment"),  # newly repealed
+        # Art. 63, comma 8: the comma replaced by a marked text that is a prefix of the old one.
+        (
+            "8. I requisiti sono indicati nell'allegato II.4, che dispone una disciplina.",
+            "((8. I requisiti sono indicati nell'allegato II.4.))",
+            "amendment",
+        ),
+        # Words changed outside any marker: editorial.
+        ("1. Superi il il ((10 per cento)).", "1. Superi il ((10 per cento)).", "editorial"),
+        (
+            "1. Uno ((COMMA SOPPRESSO DAL D.L. N. 9)).",
+            "1. Uno ((PERIODO SOPPRESSO DAL D.L. N. 9)).",
+            "editorial",
+        ),
+        (
+            "((5. Ai fini della qualificazione)) e altro qualsiasi.",
+            "5. ((Ai fini della qualificazione)) e altro qualunque.",
+            "editorial",
+        ),
+        (
+            "1. Primo e secondo , ((secondo e terzo)) periodo.",
+            "1. Primo, ((secondo e terzo)) periodo.",
+            "editorial",
+        ),
+        ("1. Tabella | A | B", "1. Tabella | B | A", "editorial"),
+    ],
+)
+def test_amendment_needs_marked_text(before: str, after: str, expected: str) -> None:
+    corpus = build_versions(
+        [
+            snapshot(D1, [comma("1/1", before)]),
+            snapshot(D2, [comma("1/1", after)], events=[ORIGINAL, amendment(D2, 9)]),
+        ]
+    )
+    credited = "D.L. n. 9" if expected == "amendment" else None
+    assert kinds(corpus, "1/1") == [("original", None), (expected, credited)]
+
+
+def test_new_units_need_marked_text() -> None:
+    corpus = build_versions(
+        [
+            snapshot(D1, [comma("1/1", "1. Uno.")]),
+            snapshot(
+                D2,
+                [
+                    comma("1/1", "1. Uno."),
+                    comma("1/2", "((2. Comma inserito.))"),
+                    comma("2/1", "1. Testo che l'export prima non riportava."),
+                ],
+                events=[ORIGINAL, amendment(D2, 9)],
+            ),
+        ]
+    )
+    assert kinds(corpus, "1/2") == [("amendment", "D.L. n. 9")]
+    assert kinds(corpus, "2/1") == [("editorial", None)]

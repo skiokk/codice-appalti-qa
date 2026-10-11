@@ -46,14 +46,54 @@ def test_versions_are_consistent(real_corpus: VersionedCorpus) -> None:
     first_effective = real_corpus.snapshots[0][1]
     for version in real_corpus.versions:
         assert (version.change_kind == "original") == (version.valid_from == first_effective)
-        assert (version.changed_by is None) == (version.change_kind != "amendment")
+        if version.change_kind in ("original", "editorial"):
+            assert version.changed_by is None
+        elif version.change_kind == "amendment":
+            assert version.changed_by is not None
+    for versions in by_key.values():
+        for earlier, later in pairwise(versions):
+            if later.change_kind == "heading":  # same text, new heading, no gap
+                assert earlier.valid_to == later.valid_from
+                assert content_fingerprint(earlier.text) == content_fingerprint(later.text)
+                assert earlier.heading != later.heading
 
 
-def test_art_34_has_six_commi_throughout(real_corpus: VersionedCorpus) -> None:
-    """The flat exports number commi 5 and 6 of art. 34 "1." and "2." (per-article repair)."""
+@pytest.mark.parametrize(("article", "last"), [("34", 6), ("41", 15), ("62", 18)])
+def test_restarted_numbering_is_repaired(
+    real_corpus: VersionedCorpus, article: str, last: int
+) -> None:
+    """The flat exports up to 2024 number arts. 34 (commi 5-6), 41 (9-10) and 62 (8-9) from
+    "1." again; the structured exports confirm the continued numbering."""
+    expected = {f"{article}/{n}" for n in range(1, last + 1)}
     for snapshot, _ in real_corpus.snapshots:
-        keys = [u.key for u in snapshot.units if u.article == "34" and u.allegato is None]
-        assert keys == [f"34/{n}" for n in range(1, 7)], snapshot.source_file
+        keys = {u.key for u in snapshot.units if u.article == article and u.allegato is None}
+        assert expected <= keys, snapshot.source_file
+    repaired = {d.article for d in real_corpus.numbering if d.renumbered}
+    kept = {d.article for d in real_corpus.numbering if not d.renumbered}
+    assert repaired == {"34", "41", "62"}
+    assert kept == {"205", "207"}  # the structured exports keep their runs inside a comma
+
+
+def test_labour_cost_comma_exists_from_the_original_text(real_corpus: VersionedCorpus) -> None:
+    """41/13 (costo del lavoro) is in force from 2023-04-01, amended by D.Lgs. 209/2024."""
+    versions = [v for v in real_corpus.versions if v.unit_key == "41/13"]
+    assert [(v.valid_from.isoformat(), v.change_kind) for v in versions] == [
+        ("2023-04-01", "original"),
+        ("2024-12-31", "amendment"),
+    ]
+    assert "il costo del lavoro e' determinato annualmente" in versions[0].text
+    assert versions[1].changed_by is not None
+    assert versions[1].changed_by.label == "D.Lgs. 31 dicembre 2024, n. 209"
+
+
+def test_headings_are_point_in_time(real_corpus: VersionedCorpus) -> None:
+    """Art. 140 lost "e di protezione civile" from its heading on 2025-05-21 (D.L. 73/2025)."""
+    rows = [v for v in real_corpus.versions if v.unit_key == "140/1"][:2]
+    assert [(v.valid_from.isoformat(), v.change_kind, v.heading) for v in rows] == [
+        ("2023-04-01", "original", "Procedure in caso di somma urgenza e di protezione civile"),
+        ("2025-05-21", "heading", "Procedure in caso di somma urgenza"),
+    ]
+    assert rows[1].changed_by is not None and rows[1].changed_by.label.startswith("D.L. 21 maggio")
 
 
 def test_export_format_switch_is_not_an_amendment(real_corpus: VersionedCorpus) -> None:

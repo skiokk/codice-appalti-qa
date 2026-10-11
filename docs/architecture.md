@@ -164,16 +164,23 @@ docstring says so (writers like `load_corpus` and `embed_missing` commit).
   unique `(act_id, amending_urn, event_date)`.
 - `units(id, act_id, key, kind 'article'|'comma'|'allegato_block', article, comma, allegato, heading, ordinal)`,
   unique `(act_id, key)`. Every unit inside an allegato has kind `allegato_block` (with `allegato`
-  set and `article`/`comma` filled when the allegato is structured). `heading` = latest heading;
+  set and `article`/`comma` filled when the allegato is structured). `heading` = latest heading
+  (not used by retrieval: dated headings are on `unit_versions`);
   `ordinal` = document order over the whole act (code body, then allegati in order).
 - `unit_versions(id, unit_id, heading, text, text_hash, valid_from, valid_to, changed_by_event, change_kind, repealed, tsv, embedding vector(DIM), embedding_model)`.
-  - `change_kind` is `'original'`, `'amendment'` (default) or `'editorial'`; `changed_by_event`
-    is set only for amendments. The schema adds the column to databases created without it
-    (`ALTER TABLE ... ADD COLUMN IF NOT EXISTS`), so `init-db` or `ingest` upgrades them.
+  - One row per text *and heading*: `heading` is the heading in force over the row. A change of
+    the heading alone closes the row and opens one with the same text and `change_kind
+    'heading'`; retrieval treats such rows as a continuation of the text version (section 5).
+  - `change_kind` is `'original'`, `'amendment'` (default), `'editorial'` or `'heading'`;
+    `changed_by_event` is set for amendments and for `heading` rows whose new heading is marked
+    as amended, NULL otherwise. The schema adds the column to databases created without it and
+    re-creates its check (`ALTER TABLE ... ADD COLUMN IF NOT EXISTS`, `DROP/ADD CONSTRAINT`), so
+    `init-db` or `ingest` upgrades them.
   - In force at date D: `valid_from <= D AND (valid_to IS NULL OR valid_to > D)`; `valid_to` is
     exclusive. An exclusion constraint forbids overlapping intervals for the same unit.
   - `text_hash` = sha256 hex of `text` (UTF-8).
-  - `tsv` is generated: heading (weight A) + text (weight B), `italian` config, GIN index.
+  - `tsv` is generated from the row's heading (weight A) and text (weight B), `italian` config,
+    GIN index, so a later heading never changes what an earlier date matches.
   - `embedding` has an HNSW `vector_cosine_ops` index; `embedding_model` records the model name.
 - `qa_log(id, created_at, client_hash, question, at_date, provider, model, abstained, cited_keys text[], input_tokens, output_tokens, latency_ms, error)`
   for the web app (usage, rate limiting across restarts, cost tracking). Never store raw IPs.
@@ -182,24 +189,33 @@ docstring says so (writers like `load_corpus` and `embed_missing` commit).
 
 ```python
 UnitKind = Literal["article", "comma", "allegato_block"]
-ChangeKind = Literal["original", "amendment", "editorial"]
+ChangeKind = Literal["original", "amendment", "editorial", "heading"]
 
 class Event(BaseModel):
     id: int | None = None; date: date; kind: Literal["original", "amendment"] = "amendment"
     amending_urn: str; label: str                       # label e.g. "D.L. 10 maggio 2023, n. 51"
 
+class HeadingChange(BaseModel):
+    date: date; heading: str | None; changed_by: Event | None   # act only when marked
+
 class UnitVersion(BaseModel):
     id: int | None = None; unit_key: str; kind: UnitKind
-    article: str | None; comma: str | None; allegato: str | None; heading: str | None
+    article: str | None; comma: str | None; allegato: str | None
+    heading: str | None                                 # in force on valid_from
     text: str; text_hash: str; valid_from: date; valid_to: date | None
     changed_by: Event | None; change_kind: ChangeKind = "amendment"; repealed: bool = False
+    heading_changes: list[HeadingChange] = []           # later headings of the same text
     def in_force_at(self, day: date) -> bool
+    def heading_at(self, day: date) -> str | None
 
 class Hit(BaseModel):
-    unit_key: str; version_id: int; heading: str | None; text: str; score: float
-    valid_from: date; valid_to: date | None; normattiva_url: str
-    modified_by: list[Event] = []                       # amendments to this unit up to the query date
-                                                        # (editorial versions have no event)
+    unit_key: str; version_id: int                      # version_id: the unit_versions row
+    heading: str | None                                 # heading in force at the query date
+    text: str; score: float
+    valid_from: date; valid_to: date | None             # validity of the text (heading rows folded)
+    normattiva_url: str
+    modified_by: list[Event] = []                       # acts credited on this unit's rows up
+                                                        # to the query date (editorial: no event)
     label: str                                          # property, key_label(unit_key)
 
 class Citation(BaseModel):
@@ -267,7 +283,8 @@ class ActInfo:
 class ParsedUnit:
     key: str; kind: UnitKind; article: str | None; comma: str | None; allegato: str | None
     heading: str | None; text: str; ordinal: int; repealed: bool = False
-    amended: bool = False              # the export marks (part of) the text as inserted/replaced
+    marked: str = ""; heading_marked: str = ""   # text / heading with "((...))" kept, "" if none
+    amended: bool                                # property: bool(marked)
 
 @dataclass(frozen=True, slots=True)
 class ParsedSnapshot:
@@ -276,7 +293,10 @@ class ParsedSnapshot:
     source_file: str; sha256: str      # sha256 of the file bytes
     act: ActInfo
     events: list[Event]                # from meta/lifecycle/eventRef + references (original included)
-    units: list[ParsedUnit]
+    units: list[ParsedUnit]            # flat articles numbered as exported
+    structured: frozenset[str]         # body articles exported with one <paragraph> per comma
+    renumbered: dict[str, list[ParsedUnit]]  # flat articles with a restarted numbering: the units
+                                             # with each run read as the next commi
 
 def normalize_text(text: str) -> str   # drop "((" "))" markers, normalise whitespace per line
 def text_hash(text: str) -> str        # sha256 hex of the UTF-8 text
@@ -285,11 +305,32 @@ def parse_snapshot(path: Path) -> ParsedSnapshot
 
 Text rules: a comma's `text` starts with its number (`"1. ..."`); the list intro and each point go
 on their own line (`"a) ..."`), nested points likewise. Article-level units (no commi) contain the
-article body only. Headings come from `<heading>` (allegati: the article heading line, or the
-allegato title for blocks). `<ins>`/`((...))` markers are removed from the stored text. A unit whose
-text says it was repealed (e.g. `((ARTICOLO ABROGATO ...))`, `((COMMA ABROGATO ...))`) is kept
-with `repealed=True`. Event labels are Italian and human-readable (`"D.L. 10 maggio 2023, n. 51"`,
-`"L. 3 luglio 2023, n. 87"`), built from the `passiveRef` href.
+article body only. Headings come from `<heading>` plus any text between it and comma 1 (allegati:
+the article heading line, or the allegato title for blocks). `<ins>`/`((...))` markers are removed
+from the stored text and kept in `marked`/`heading_marked`; a unit that opens inside a span opened
+by the previous one gets an opening marker there. A unit whose text says it was repealed (e.g.
+`((ARTICOLO ABROGATO ...))`, `((COMMA ABROGATO ...))`) is kept with `repealed=True`. Event labels
+are Italian and human-readable (`"D.L. 10 maggio 2023, n. 51"`, `"L. 3 luglio 2023, n. 87"`),
+built from the `passiveRef` href.
+
+```python
+# appalti_qa/ingest/alignment.py
+@dataclass(frozen=True, slots=True)
+class NumberingDecision:
+    source_file: str; article: str; renumbered: bool   # True: the continued numbering adopted
+    keys: tuple[str, ...]                              # keys the renumbered reading adds
+    reference: str | None; similarity: float           # structured export compared, lowest ratio
+
+def align_numbering(snapshots: Sequence[ParsedSnapshot]
+                    ) -> tuple[list[ParsedSnapshot], list[NumberingDecision]]
+```
+
+A flat article whose labels restart from `1.` is parsed twice: as exported and with each run read
+as the next commi. `align_numbering` compares it with the same article in the nearest snapshot
+that exports it structured and adopts the renumbered reading when every comma it changes exists
+there with a word-sequence similarity of at least 0.5 and it matches better than the reading as
+exported; otherwise (or without a structured counterpart) the export's numbering is kept and a
+warning is logged.
 
 ```python
 # appalti_qa/ingest/versioning.py
@@ -305,7 +346,8 @@ class VersionedCorpus:
     snapshots: list[tuple[ParsedSnapshot, date]]   # distinct snapshots used, with effective date
     events: list[Event]                            # union over all snapshots, by date
     units: list[ParsedUnit]                        # latest metadata per key, final ordinals
-    versions: list[VersionRecord]
+    versions: list[VersionRecord]                  # rows: text versions and heading rows
+    numbering: list[NumberingDecision]             # restarted numbering, per snapshot and article
 
 def content_digest(snapshot: ParsedSnapshot) -> str   # keys, headings and wording; layout ignored
 def effective_date(snapshot: ParsedSnapshot, previous_vigenza: date | None) -> date
@@ -315,6 +357,7 @@ def build_versions(snapshots: Sequence[ParsedSnapshot]) -> VersionedCorpus
 
 Versioning rules (decision 7 in `docs/decisions.md`):
 
+0. `align_numbering` fixes the comma numbering of the flat snapshots first.
 1. Sort by `vigenza_date`. A snapshot whose `content_digest` equals the previous one adds no
    version; it only refreshes the stored rendering of the open versions.
 2. A version takes effect on the `vigenza_date` of the snapshot that introduced it. After
@@ -325,18 +368,23 @@ Versioning rules (decision 7 in `docs/decisions.md`):
 3. For each key, a new version starts when the wording differs from the open version
    (`content_fingerprint`: whitespace, dots, hyphens, quotes, apostrophe-style accents and
    `((...))` markers ignored), so the 2025 switch from flat to structured exports creates no
-   versions. A change of the heading alone updates the open version's heading without a new
-   version, and an unchanged version keeps the latest rendering of its text. The open version
-   gets `valid_to` = the new `valid_from`. A key missing from a later snapshot is closed at that
-   snapshot's date; if it reappears it gets a new version.
+   versions. An unchanged version keeps the latest rendering of its text. The open version gets
+   `valid_to` = the new `valid_from`. A key missing from a later snapshot is closed at that
+   snapshot's date; if it reappears it gets a new version. A change of the heading alone (its
+   `content_fingerprint`) closes the row and opens a `heading` row with the same text and the new
+   heading; it is not a new version of the text.
 4. `change_kind`: `original` for versions of the first snapshot; `editorial` when only
-   punctuation or capitalisation changed (same `word_fingerprint`) or the article's words are
-   split into commi differently; `amendment` otherwise (including a unit that appears or
-   reappears). `changed_by` of an amendment = the latest amendment dated on or before
-   `valid_from` in the lifecycle of the snapshot that introduced it (all known events when that
-   lifecycle has none); `None` for original and editorial versions. Doubtful attributions (no
-   act since the previous change, several acts in the interval, an act published but missing
-   from the export's lifecycle) are logged.
+   punctuation or capitalisation changed (same `word_fingerprint`), the article's words are
+   split into commi differently, or the words that changed do not touch the export's
+   `((...))` markers; `amendment` when they do (an inserted or replaced word marked in the new
+   text, a removed or replaced word marked in the old one, words removed from inside a span of
+   the new text; a deletion marker counts as a word, a repeal note as one word whatever its
+   wording) or when the unit becomes repealed; a new unit is an amendment when any of its text
+   is marked. `changed_by` of an amendment, and of a `heading` row whose new heading touches the
+   markers, = the latest amendment dated on or before `valid_from` in the lifecycle of the
+   snapshot that introduced it (all known events when that lifecycle has none); `None` for the
+   others. Doubtful attributions (no act since the previous change, several acts in the
+   interval, an act published but missing from the export's lifecycle) are logged.
 5. Versions of the last snapshot stay open (`valid_to=None`).
 
 ```python
@@ -432,7 +480,8 @@ def extract_refs(text: str) -> list[str]     # "art. 50, comma 1, lett. b)" -> [
 def normattiva_url(unit_key: str, at_date: date) -> str
 ```
 
-- Only versions in force at `at_date` and not `repealed` are searched.
+- Only rows in force at `at_date` and not `repealed` are searched; each row's `tsv` and
+  embedding carry the heading in force over the row.
 - `lexical`: `websearch_to_tsquery('italian', query)` on `tsv`, ranked by `ts_rank_cd`. Because
   AND-ing every word of a natural-language question rarely matches, `&` is relaxed to `|`
   (phrases kept) and the rank is weighted by the share of query lexemes the unit contains; queries
@@ -445,10 +494,14 @@ def normattiva_url(unit_key: str, at_date: date) -> str
   (score `1.0` + their fusion score). Without embeddings for the configured model, semantic search
   logs a warning and returns `[]` without loading the model, so hybrid degrades to lexical.
 - `Hit.score` is the mode's score (higher is better); ties broken by `units.ordinal`.
-  `Hit.modified_by` = events of the unit's versions with `valid_from <= at_date`, by date.
+  `Hit.heading` is the row's heading, the one in force at `at_date`; `Hit.valid_from`/`valid_to`
+  span the text version, across `heading` rows that continue it without a gap.
+  `Hit.modified_by` = events of the unit's rows with `valid_from <= at_date`, by date.
 - `lookup` returns every unit matching any ref (`keys.ref_matches`) in force at `at_date`, in
-  document order, score `1.0`. `history` returns all versions of matching units, ordered by
-  ordinal then `valid_from`, with `changed_by` filled; both return `[]` for invalid keys.
+  document order, score `1.0`. `history` returns all text versions of matching units, ordered by
+  ordinal then `valid_from`, with `changed_by` filled; a `heading` row is folded into the version
+  before it (`valid_to` extended, `heading_changes` appended; `heading` stays the one in force on
+  the version's `valid_from`). Both return `[]` for invalid keys.
   `available_range` = (earliest `valid_from`, latest snapshot `vigenza_date`) or `None` if empty.
 - `normattiva_url`: `https://www.normattiva.it/uri-res/N2Ls?urn:nir:stato:decreto.legislativo:2023-03-31;36~art{N}!vig={YYYY-MM-DD}`
   where `{N}` is the article without dash (`225-bis` → `225bis`); for allegati, the act URL without

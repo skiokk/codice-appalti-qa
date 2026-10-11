@@ -27,7 +27,13 @@ from dataclasses import replace
 from lxml import etree
 
 from appalti_qa.ingest.numbering import layout_lettere, split_numbered
-from appalti_qa.ingest.text import clean_heading, collapse_whitespace, cut_notes, is_note
+from appalti_qa.ingest.text import (
+    clean_heading,
+    collapse_whitespace,
+    cut_notes,
+    has_markers,
+    is_note,
+)
 from appalti_qa.ingest.units import ParsedUnit, make_unit
 from appalti_qa.ingest.xmlutil import block_lines, child, children, inline_text
 from appalti_qa.keys import (
@@ -72,7 +78,7 @@ def annex_units(docs: Iterable[etree._Element]) -> Iterator[ParsedUnit]:
     Articles without a heading of their own get the allegato title, read from the first
     article of the allegato.
     """
-    titles: dict[str, str] = {}
+    titles: dict[str, tuple[str, str]] = {}  # allegato -> (title, title with its markers)
     for doc in docs:
         identity = doc_identity(doc.get("name", ""))
         if identity is None:
@@ -82,8 +88,13 @@ def annex_units(docs: Iterable[etree._Element]) -> Iterator[ParsedUnit]:
             title, units = _article_doc(annex, article_from_num(part), _flat_text(doc))
             if title:
                 titles.setdefault(annex, title)
-            fallback = titles.get(annex)
-            yield from (replace(u, heading=fallback) if u.heading is None else u for u in units)
+            fallback, fallback_marked = titles.get(annex, (None, ""))
+            yield from (
+                replace(u, heading=fallback, heading_marked=fallback_marked)
+                if u.heading is None
+                else u
+                for u in units
+            )
         elif not part:
             yield from _blocks_doc(annex, _flat_text(doc))
         else:
@@ -108,15 +119,22 @@ def _flat_text(doc: etree._Element) -> str:
     return cut_notes(collapse_whitespace(" ".join(_doc_lines(doc, keep_breaks=False))))
 
 
-def _article_doc(annex: str, article: str, text: str) -> tuple[str | None, list[ParsedUnit]]:
-    """(allegato title found before "Articolo N.", units of the article)."""
+def _article_doc(
+    annex: str, article: str, text: str
+) -> tuple[tuple[str, str] | None, list[ParsedUnit]]:
+    """((allegato title, the same with its markers) found before "Articolo N.", units)."""
     title_end, body = _split_article_title(text, article)
-    title = _annex_title(text[:title_end]) if title_end else None
+    raw_title = text[:title_end]
+    title = _annex_title(raw_title) if title_end else None
+    marked_title = (title, _marked(raw_title)) if title else None
     preamble, segments = split_numbered(body)
     if not segments:
         key = make_key(article, annex=annex)
-        return title, [make_unit(key, "allegato_block", body, article=article, allegato=annex)]
+        return marked_title, [
+            make_unit(key, "allegato_block", body, article=article, allegato=annex)
+        ]
     heading = clean_heading(preamble)
+    heading_marked = _marked(preamble) if heading else ""
     units = [
         make_unit(
             make_key(article, segment.label, annex=annex),
@@ -129,7 +147,14 @@ def _article_doc(annex: str, article: str, text: str) -> tuple[str | None, list[
         )
         for segment in segments
     ]
-    return title, units
+    if heading_marked:
+        units = [replace(unit, heading_marked=heading_marked) for unit in units]
+    return marked_title, units
+
+
+def _marked(raw: str) -> str:
+    """``raw`` with its whitespace collapsed when it carries modification markers, else ""."""
+    return collapse_whitespace(raw) if has_markers(raw) else ""
 
 
 def _split_article_title(text: str, article: str) -> tuple[int, str]:
