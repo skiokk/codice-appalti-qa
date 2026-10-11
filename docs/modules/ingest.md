@@ -52,7 +52,9 @@ renumbered reading is adopted when every comma it changes exists there with a wo
 similarity of at least 0.5 (difflib ratio on the word lists) and it matches better than the
 reading as exported; otherwise, or without a structured counterpart, the export's numbering is
 kept and a warning is logged. The decisions are in `VersionedCorpus.numbering` and summarised by
-`appalti-qa ingest`.
+`appalti-qa ingest`. A renumbered comma is stored with its corrected label (the 2023 text of 41/9
+starts with `9.` where the flat export reads `1.`), so quoted spans of these commi before
+2024-12-28 follow the structured numbering rather than the flat export literally.
 
 On the corpus (9 flat snapshots, 2023-04-01 to 2024-12-31) five articles restart their
 numbering:

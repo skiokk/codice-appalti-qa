@@ -106,7 +106,8 @@ day of each new text; only those boundary snapshots are kept, named by that day.
    Normattiva marks as amended (`((...))`, deletion markers, repeal notes) or the comma is
    repealed. Other differences
    (punctuation, a different split into commi, a reworded repeal note, words an export dropped or
-   duplicated) are *editorial* versions credited to no act. A new article heading alone is not a
+   duplicated away from any marked span) are *editorial* versions credited to no act; an export
+   artefact that touches marked text still counts as an amendment (see Limitations). A new article heading alone is not a
    new version: the heading is stored with its own dates and the one in force at the query date
    is shown, searched and given to the model. The corpus has 2,593 original, 589 amended and 31
    editorial versions, and 25 rows where only the heading changed (8 articles).
@@ -146,8 +147,9 @@ expected references. Comma level means the retrieved unit matches an expected re
 
 Run `20261011T175038Z_retrieval`, on the exactly dated corpus with the repaired comma numbering
 and point-in-time headings: 73 questions, all drafts, k = 1, 3, 5, 10. The repair added commi
-41/9-41/15 and 62/8-62/18 before 2024-12-28; this reordered some candidates of the two questions
-dated 2024-06-01 and moved a single figure, the hybrid article MRR (0.827 before). The full
+41/9-41/15 and 62/8-62/18 before 2024-12-28; this reordered some lower-ranked candidates (mostly
+of the two questions dated 2024-06-01) and moved a single figure, the hybrid article MRR (0.827
+before). The full
 report, with results by kind and by topic, is in
 [eval/results/latest_retrieval.md](eval/results/latest_retrieval.md). With
 hybrid search, 71% of questions get an expected comma in first place (hit@1) and 88% within the
@@ -268,7 +270,8 @@ Environment variables, also read from `.env` (see [.env.example](.env.example)):
 - **Amendment or editorial.** The distinction rests on Normattiva's markers: a change an act made
   without a marker would be editorial, and marked text that differs only between the 2024 flat
   and the 2025 structured exports counts as an amendment (11 units on 2025-03-15 are credited to
-  D.L. 25/2025, several of them likely of this kind; see
+  D.L. 25/2025, several of them likely of this kind, e.g. a duplicated word removed next to a
+  marked span in all. I.7, 40/2; see
   [docs/modules/ingest.md](docs/modules/ingest.md)). Defects of a single export, such as a
   sentence of art. 125, comma 1, missing from the 2024-12-31 text, are not repaired.
 - **Evaluation.** The questions are drafts awaiting expert review, and answer quality has not yet

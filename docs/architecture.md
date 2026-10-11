@@ -183,7 +183,8 @@ docstring says so (writers like `load_corpus` and `embed_missing` commit).
     GIN index, so a later heading never changes what an earlier date matches.
   - `embedding` has an HNSW `vector_cosine_ops` index; `embedding_model` records the model name.
 - `qa_log(id, created_at, client_hash, question, at_date, provider, model, abstained, cited_keys text[], input_tokens, output_tokens, latency_ms, error)`
-  for the web app (usage, rate limiting across restarts, cost tracking). Never store raw IPs.
+  for the web app (usage and cost tracking; rate limits are kept in process and reset on
+  restart). Never store raw IPs.
 
 ### 3.4 `appalti_qa.models`
 
