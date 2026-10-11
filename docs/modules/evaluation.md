@@ -44,7 +44,21 @@ that include drafts.
 - `recall@k`: share of expected refs (or articles) found in the top k; `hit@k`: at least one
   found; `mrr`: reciprocal rank of the first one found. Defaults: k = 1, 3, 5, 10.
 
-`appalti-qa eval retrieval` computes them for each mode (lexical, semantic, hybrid).
+`appalti-qa eval retrieval` computes them for each mode (lexical, semantic, hybrid), and records
+the retrieval settings (`semantic_granularity`, `hubness_weight`, `lexical_weight`,
+`fusion_depth`, `rrf_k`) in the run's configuration.
+
+**Tuning retrieval: split and sweep.** Retrieval parameters are chosen on a fixed split
+(`dataset.split_of`, decision 8): questions with expected refs and an odd id are the development
+set (37), those with an even id the test set (36). `--split dev|test` restricts `eval retrieval`
+(a split run cannot be published). `appalti-qa eval sweep --all --split dev` evaluates the fixed
+grid of `evaluation/sweep.py` (lexical, semantic per granularity, and 60 hybrid variants) and
+applies the selection rule stated there before any run (best development MRR; ties within 0.01
+by recall@5, then by fewest changes from the baseline); `--split test --chosen-from DEV.json`
+reports the same grid on the test set and says whether the chosen variant beats the baseline
+(higher MRR, recall@5 not lower), the condition for making it the default. `--only VARIANT`
+(repeatable) restricts the grid. Sweeps are written to `eval/results/sweeps/` and never
+published. Query embeddings are cached within a sweep.
 
 **Answers** (`appalti-qa eval answers`, alias `run`): each question goes through
 `answer.answer_question` with the configured provider, and its sources come from the same
@@ -136,9 +150,10 @@ describe the system:
 - `retrieval --publish` with the semantic or hybrid mode, and `answers --publish` retrieving with
   one of them, when `EMBEDDING_MODEL=fake` or fewer than 99% of the versions searchable on the
   evaluated dates (in force on at least one question's `vigenza`, not repealed) have an embedding
-  from the configured model (`embedding_coverage`). Semantic search only returns versions embedded
-  by that model, so it would come back empty or partial and hybrid search would degrade to
-  lexical. Lexical-only runs need no embeddings.
+  from the configured model (`embedding_coverage`; with `SEMANTIC_GRANULARITY=passage`, all
+  their passages too). Semantic search only returns versions embedded by that model, so it
+  would come back empty or partial and hybrid search would degrade to lexical. Lexical-only runs
+  need no embeddings.
 
 ```bash
 appalti-qa eval validate --db

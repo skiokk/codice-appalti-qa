@@ -158,10 +158,10 @@ that happen to suit them.
    (37), those with an even id the test set (36) (`evaluation.dataset.split_of`). The rule
    depends only on the id, so it is deterministic and independent of the results.
 2. *Variants* (`evaluation.sweep.default_grid`), each with every parameter explicit: semantic
-   granularity `unit` (one vector per version, as before) or `passage` (max-sim over the
-   sub-passages of decision-free splitting rules: intro and one passage per lettera, windows of
-   about 1,000 characters with up to 200 overlapping; these sizes come from the problem, not from
-   tuning, since each change needs a re-embedding); for passages, a hubness correction weight
+   granularity `unit` (one vector per version, as before) or `passage` (max-sim over fixed
+   sub-passages: the intro and one passage per lettera, windows of about 1,000 characters with
+   up to 200 overlapping; these sizes were set from the problem, not tuned, since each change
+   needs a re-embedding); for passages, a hubness correction weight
    λ in {0, 0.5, 1} (score − λ · mean similarity to the 10 nearest probe queries, the corpus
    headings embedded as queries; λ = 0.5 ranks like CSLS); lexical weight w in RRF in {0.5, 1,
    1.5, 2, 3}; fusion depth (each list `d * k` long) in {2, 4, 8}; `RRF_K` stays 60. 60 hybrid
@@ -178,3 +178,37 @@ comparison from the database; results are kept in `eval/results/sweeps/`. The te
 (36 questions; one question moving by one rank changes MRR by up to 0.014), and the six temporal
 pairs ask the same question at two dates, so each pair has one question in each split: the test
 set is not fully independent of the development set for them.
+
+**Result.** On the development set the rule chose `hybrid passage w0.5 d8 h0.5` (passages,
+CSLS-style hubness correction, lexical weight 0.5, lists of 8k): MRR 0.816 and recall@5 0.901
+against 0.775 and 0.820 for the baseline. On the test set it does not beat the baseline: MRR
+0.748 against 0.797, recall@5 0.861 against 0.852. **The baseline stays the default**
+(`semantic_granularity=unit`, `lexical_weight=1`, `fusion_depth=4`); the passages are built and
+the new settings are available, but off.
+
+| Variant | Dev R@5 | Dev MRR | Test R@5 | Test MRR | All R@5 | All MRR |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| hybrid unit w1 d4 (baseline, default) | 0.820 | 0.775 | 0.852 | 0.797 | 0.836 | 0.786 |
+| hybrid passage w0.5 d8 h0.5 (chosen on dev) | 0.901 | 0.816 | 0.861 | 0.748 | 0.881 | 0.782 |
+| semantic unit | 0.793 | 0.666 | 0.806 | 0.701 | 0.799 | 0.684 |
+| semantic passage | 0.874 | 0.708 | 0.819 | 0.726 | 0.847 | 0.717 |
+
+What the numbers say:
+
+- Passage-level embeddings fix the failure that motivated them. For "Fino a che importo posso
+  affidare direttamente un servizio?" (at 2026-10-11) 50/1 is outside the top 10 of the
+  baseline and second with the chosen variant; Q021 goes from outside the top 10 to rank 5.
+  Semantic search alone improves on both splits (MRR +0.042 dev, +0.025 test).
+- In hybrid search they move more expected references into the top 5 and 10 (recall@10 on all
+  73 questions 0.927 against 0.886; answerable recall@5 0.923 against 0.885, multi-reference
+  0.704 against 0.556), but they also lift other list-structured units, and with the lexical
+  list weighted 0.5 the right comma more often lands second or third instead of first: on the
+  test set 6 questions get worse (Q022, Q052 and Q076 from rank 1 to 2 or 3) and 2 better.
+  On the development set it was 6 better and 2 worse. With 37 questions per side the selection
+  overfitted the development set.
+- Some variants do score above the baseline on the test set (for example `hybrid unit w1 d8`,
+  MRR 0.800), but picking one of them now would be choosing on the test set, so the default does
+  not change. A new selection needs new questions, or a cross-validated rule fixed in advance.
+
+Results: `eval/results/sweeps/20261011T182205Z_sweep_dev`, `20261011T182509Z_sweep_test` and
+`20261011T182915Z_sweep_all` (`.json`, `.md`).

@@ -28,7 +28,9 @@ sources do not answer the question. It also publishes how often it gets things r
 - **Hybrid retrieval in PostgreSQL.** Italian full-text search (`tsvector`) and local
   multilingual embeddings (`intfloat/multilingual-e5-base` on CPU, pgvector HNSW), fused with
   reciprocal rank fusion and filtered by date. Explicit references such as "art. 50, comma 1,
-  lett. b)" are recognised and pinned first.
+  lett. b)" are recognised and pinned first. Long commi and tables are also embedded as
+  sub-passages (one per lettera, or overlapping windows); passage-level search is measured and
+  available, but not the default, because it did not beat the baseline on held-out questions.
 - **Cited answers.** Claude through the Anthropic Messages API with native citations: each comma
   is a document, and the API returns the exact quoted span. Open-weight models on Groq can be
   compared, and a deterministic fake provider runs everything offline with no API key.
@@ -139,13 +141,14 @@ different versions of the exactly dated text.
 expected references. Comma level means the retrieved unit matches an expected reference
 (`50/1/b` is found by unit `50/1`); article level means the right article was retrieved.
 
-| Mode | Recall@1 | Recall@5 | Recall@10 | MRR | Article recall@5 | Article recall@10 | Article MRR |
+| Mode (v1, default) | Recall@1 | Recall@5 | Recall@10 | MRR | Article recall@5 | Article recall@10 | Article MRR |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | Lexical (Italian full-text) | 0.192 | 0.546 | 0.751 | 0.355 | 0.610 | 0.788 | 0.387 |
 | Semantic (e5-base) | 0.534 | 0.799 | 0.899 | 0.684 | 0.884 | 0.931 | 0.783 |
 | **Hybrid (RRF, default)** | 0.660 | 0.836 | 0.886 | 0.786 | 0.870 | 0.918 | 0.826 |
 
-Run `20261011T175038Z_retrieval`, on the exactly dated corpus with the repaired comma numbering
+Run `20261011T182950Z_retrieval` (published; identical to the v1 run `20261011T175038Z_retrieval`,
+since the defaults did not change), on the exactly dated corpus with the repaired comma numbering
 and point-in-time headings: 73 questions, all drafts, k = 1, 3, 5, 10. The repair added commi
 41/9-41/15 and 62/8-62/18 before 2024-12-28; this reordered some lower-ranked candidates (mostly
 of the two questions dated 2024-06-01) and moved a single figure, the hybrid article MRR (0.827
@@ -156,6 +159,36 @@ hybrid search, 71% of questions get an expected comma in first place (hit@1) and
 top 5 (hit@5). Semantic search alone has the best recall@10. The weakest group is the
 multi-reference questions (hybrid recall@5 0.556 over 9 questions). Only 4 questions cite an
 article explicitly, so reference pinning barely affects these numbers.
+
+**Retrieval experiment: passage-level embeddings** ([decision 8](docs/decisions.md)). e5-base is
+weak on long, list-structured commi: for "Fino a che importo posso affidare direttamente un
+servizio?" the cosine rank of 50/1 (2,135 characters, lettere a-e) is 61, and fusion with that
+noisy list keeps it out of the hybrid top 10 although lexical search finds it at rank 2-4. Long
+units are therefore also embedded as sub-passages (intro, one passage per lettera with the
+intro, overlapping windows of about 1,000 characters for long blocks and tables), and a version
+can score its best passage. The method was fixed before looking at any number: questions with
+an odd id are the development set (37), even ids the test set (36); 60 hybrid variants
+(granularity, a CSLS-style hubness correction, lexical weight in RRF, fusion depth) were
+compared on the development set only, a rule stated in advance chose one, and it would become
+the default only if it beat the baseline on the test set (higher MRR, recall@5 not lower).
+
+| Variant | Dev R@5 | Dev MRR | Test R@5 | Test MRR | All 73 R@5 | All 73 MRR |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Hybrid, whole units, plain RRF (v1, default) | 0.820 | 0.775 | 0.852 | 0.797 | 0.836 | 0.786 |
+| Hybrid, passages, hubness 0.5, lexical weight 0.5, depth 8k (chosen on dev) | 0.901 | 0.816 | 0.861 | 0.748 | 0.881 | 0.782 |
+| Semantic, whole units | 0.793 | 0.666 | 0.806 | 0.701 | 0.799 | 0.684 |
+| Semantic, passages | 0.874 | 0.708 | 0.819 | 0.726 | 0.847 | 0.717 |
+
+**The chosen variant does not beat the baseline on the test set, so the default is unchanged.**
+Passages fix the motivating cases (50/1 for the example query moves from outside the hybrid top
+10 to rank 2; Q021, "Fino a che importo posso affidare direttamente un lavoro di
+manutenzione?", from outside the top 10 to rank 5) and raise recall@10 on all 73 questions from
+0.886 to 0.927 (multi-reference recall@5 from 0.556 to 0.704), but they also lift other
+list-structured units, and on the test set the right comma more often drops from first to
+second or third (6 questions worse, 2 better). With 37 questions the development set was too
+small to choose among 60 variants without overfitting. The full grid is in
+[eval/results/sweeps](eval/results/sweeps), and `appalti-qa eval sweep --all --split dev` (or
+`test`) reproduces it.
 
 **Answers** (correctness, citation precision and recall, abstention accuracy, latency, cost):
 *pending: run with an API key*
@@ -187,7 +220,7 @@ cp .env.example .env                              # optional; defaults run offli
 docker compose up -d --build                      # db (127.0.0.1:5433) + app (localhost:8000)
 docker compose exec app appalti-qa download --refine  # exactly dated snapshots -> ./data/raw/akn
 docker compose exec app appalti-qa ingest         # parse, version, load
-docker compose exec app appalti-qa embed          # embeddings on CPU (~15-25 min the first time)
+docker compose exec app appalti-qa embed          # embeddings on CPU (~25-35 min the first time)
 ```
 
 Open <http://localhost:8000>.
@@ -207,6 +240,7 @@ python3.12 -m venv .venv
 
 .venv/bin/appalti-qa eval validate --db
 .venv/bin/appalti-qa eval retrieval --all          # lexical, semantic and hybrid
+.venv/bin/appalti-qa eval sweep --all --split dev  # retrieval variants on the development split
 .venv/bin/appalti-qa eval answers --all            # fake provider unless a key is set
 # add --publish to update eval/results/latest.json (refused for fake providers, judges or
 # embedder, or a corpus not fully embedded); retrieval --publish also writes latest_retrieval.json
@@ -248,6 +282,8 @@ Environment variables, also read from `.env` (see [.env.example](.env.example)):
 | `JUDGE_PROVIDER` / `JUDGE_MODEL` | `fake` / `claude-opus-5-5` | evaluation judge (`fake` = word overlap) |
 | `RETRIEVAL_MODE` | `hybrid` | `lexical`, `semantic` or `hybrid` |
 | `DEFAULT_TOP_K` / `RRF_K` | `8` / `60` | sources per answer, RRF constant |
+| `FUSION_DEPTH` / `LEXICAL_WEIGHT` | `4` / `1.0` | hybrid fuses two lists of `FUSION_DEPTH * k`; weight of the lexical list in RRF |
+| `SEMANTIC_GRANULARITY` / `HUBNESS_WEIGHT` | `unit` / `0.0` | `passage`: a version scores its best sub-passage, less `HUBNESS_WEIGHT` times its hub score (see decision 8) |
 | `MIN_RELEVANCE_SCORE` | `0.0` | abstain without calling the model when the best source scores below this (not calibrated yet) |
 | `MAX_QUESTION_CHARS` | `500` | question length limit |
 | `RATE_LIMIT_PER_IP_PER_HOUR` / `RATE_LIMIT_GLOBAL_PER_DAY` | `20` / `500` | answering limits (0 disables) |
@@ -298,13 +334,13 @@ The code is released under the MIT License, see [LICENSE](LICENSE).
 src/appalti_qa/
   config.py, db.py, keys.py, models.py, cli.py   settings, DB access, canonical keys, shared models, CLI
   ingest/        Normattiva download, Akoma Ntoso parsing, versioning, loading
-  retrieval/     embeddings, search, reference extraction, Normattiva links
+  retrieval/     embeddings, passages, search, reference extraction, Normattiva links
   llm/           Anthropic, Groq and fake providers, prompts
   answer/        answer orchestration and abstention
   web/           FastAPI app, Jinja2 templates, static assets
   evaluation/    dataset, metrics, judges, reports, xlsx review, eval CLI
 sql/schema.sql   tables, exclusion constraint on validity intervals, GIN and HNSW indexes
-eval/            dataset.yaml (questions), README_dataset.md, results/, review/ (expert workbook, not committed)
+eval/            dataset.yaml (questions), README_dataset.md, results/ (sweeps/ for retrieval variants), review/ (expert workbook, not committed)
 docs/            architecture (module contract), decisions, per-module notes
 tests/           pytest suite per module; DB tests run on a throwaway database
 ```
