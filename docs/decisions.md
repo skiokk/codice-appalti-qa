@@ -281,9 +281,10 @@ retrieved allegato II.6 fragments and tables; the reranker found none of the 40 
 useful, and the model rightly abstained. Only three acronyms occur in the dataset questions
 (RUP, which the code uses, CCNL and CAM), so the evaluation could not show the gap.
 
-**Decision.** A fixed glossary of 21 acronyms (`retrieval/acronyms.py`), each mapped to the
-code's own wording, which search appends after the first occurrence of the acronym (lexical and
-semantic search, hybrid search and the reranking pool). Matching is case-sensitive on whole
+**Decision.** A fixed glossary of 19 acronyms in 21 spellings (`retrieval/acronyms.py`; MePA is
+also written MEPA and Mepa), each mapped to the code's own wording, which search appends after
+the first occurrence of the acronym (lexical and semantic search, hybrid search and the reranking
+pool). Matching is case-sensitive on whole
 words, and an acronym whose expansion is already in the question is left alone. The model still
 reads the question as written. Ambiguous acronyms are left out ("DL" is both *decreto-legge* and
 *direttore dei lavori*).
