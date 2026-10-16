@@ -18,6 +18,17 @@ This project answers only from the official consolidated text, at the requested 
 cited passage shown next to the answer and a link to Normattiva. It is built to abstain when the
 sources do not answer the question. It also publishes how often it gets things right.
 
+<p align="center">
+  <img src="docs/images/answer.png" width="640" alt="An answer to &quot;Fino a che importo posso affidare direttamente un servizio?&quot; at 17 October 2026: art. 50, comma 1, lett. b) allows direct award of services under 140,000 euro, with numbered citations linked to the cited commi, each with its validity and the act that amended it">
+</p>
+
+<p align="center">
+  <img src="docs/images/versions.png" width="640" alt="Page of art. 108, comma 4: the text in force at the chosen date and a table of its four versions, from the original text of 1 April 2023 to the version introduced by L. 30 ottobre 2025, n. 164">
+</p>
+
+*Screenshots of a local run (17 October 2026). Above: an answer with its cited commi, each with
+its validity and amending act. Below: a comma and its versions over time.*
+
 ## Features
 
 - **Point-in-time text.** 20 Normattiva consolidated snapshots, one for each day the text
@@ -198,6 +209,10 @@ second or third (6 questions worse, 2 better). With 37 questions the development
 small to choose among 60 variants without overfitting. The full grid is in
 [eval/results/sweeps](eval/results/sweeps), and `appalti-qa eval sweep --all --split dev` (or
 `test`) reproduces it.
+
+<p align="center">
+  <img src="docs/images/evaluation-retrieval.png" width="720" alt="Evaluation page, retrieval by search mode over 73 questions: lexical recall@5 54.6% and MRR 0.355, semantic 79.9% and 0.684, hybrid 83.6% and 0.786, hybrid reranked by a model 97.7% and 0.957">
+</p>
 
 **Reranking** ([decision 9](docs/decisions.md)). For answers, a wider pool of 40 candidates
 (lexical, unit-level and passage-level lists fused by RRF) is reordered by Claude Haiku 5.5, which

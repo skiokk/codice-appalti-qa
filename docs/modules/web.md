@@ -63,7 +63,9 @@ Italia, plus a JSON API. `create_app()` works with no arguments (the Docker imag
 - Bootstrap Italia 2.18.3 CSS and htmx 2.0.11 are pinned with SRI hashes; the Bootstrap Italia
   JavaScript bundle is not used, so the site works fully without JavaScript.
 - Content Security Policy without inline scripts, `nosniff`, Referrer-Policy. Model output is
-  always escaped; the only markup added is the link of each `[n]` marker to its source.
+  always escaped; the only markup added is the link of each `[n]` marker to its source and the
+  few Markdown forms the model writes (paragraphs, bullet and numbered lists, `**bold**`,
+  `### headings`), rebuilt as tags around the escaped text (`views.answer_blocks`).
 - WCAG 2.1 AA: `lang="it"`, landmarks, skip link, one `h1`, labelled controls with hints and
   inline errors (`aria-invalid`, `aria-describedby`, error summary), visible focus, an
   `aria-live="polite"` answer region, a text loading indicator, tables with captions, and states

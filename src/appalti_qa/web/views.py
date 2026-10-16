@@ -1,7 +1,9 @@
 """View models that turn an `Answer` into what the result template shows.
 
 Model output is untrusted: every piece of it is escaped here or by Jinja's autoescaping. The only
-markup added is the link of each valid "[n]" marker to its source.
+markup added is the link of each valid "[n]" marker to its source and the few Markdown forms the
+model writes (paragraphs, bullet and numbered lists, "**bold**", "### headings"), rebuilt as tags
+around text that is already escaped.
 """
 
 from __future__ import annotations
@@ -9,6 +11,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from datetime import date
+from itertools import groupby
+from operator import itemgetter
 from urllib.parse import quote
 
 from markupsafe import Markup, escape
@@ -18,6 +22,10 @@ from appalti_qa.models import Answer, Hit
 _MARKERS = re.compile(r"\[(\d+(?:\s*[,;]\s*\d+)*)\]")
 _MARKER_SEPARATOR = re.compile(r"\s*[,;]\s*")
 _PARAGRAPH_BREAK = re.compile(r"\n\s*\n")
+_BULLET = re.compile(r"^\s*[-*•]\s+(.*)$")
+_NUMBERED = re.compile(r"^\s*\d{1,2}[.)]\s+(.*)$")
+_HEADING = re.compile(r"^\s*#{1,6}\s+(.*)$")
+_BOLD = re.compile(r"\*\*(?=\S)(.+?)(?<=\S)\*\*")
 _MARKER_LINK = Markup(
     '<a class="rif-fonte" href="#fonte-{n}"><span class="visually-hidden">fonte </span>[{n}]</a>'
 )
@@ -44,10 +52,40 @@ def link_markers(text: str, source_count: int) -> Markup:
     return Markup("").join(parts)
 
 
-def paragraphs(text: str, source_count: int) -> list[Markup]:
-    """The answer split on blank lines, each paragraph escaped and with linked markers."""
-    blocks = (block.strip() for block in _PARAGRAPH_BREAK.split(text))
-    return [link_markers(block, source_count) for block in blocks if block]
+def _inline(text: str, source_count: int) -> Markup:
+    """Escaped text with linked markers and "**bold**" spans as <strong>."""
+    html = str(link_markers(text, source_count))  # escaped: "**" is the only markup left
+    return Markup(_BOLD.sub(r"<strong>\1</strong>", html))
+
+
+def _line_kind(line: str) -> tuple[str, str]:
+    """("ul" | "ol" | "h" | "p", text without its Markdown prefix)."""
+    for kind, pattern in (("ul", _BULLET), ("ol", _NUMBERED), ("h", _HEADING)):
+        match = pattern.match(line)
+        if match:
+            return kind, match.group(1)
+    return "p", line.strip()
+
+
+def answer_blocks(text: str, source_count: int) -> list[Markup]:
+    """The answer as HTML blocks: paragraphs (split on blank lines), lists and headings.
+
+    Consecutive "- item" or "1. item" lines become a list; a "### heading" line becomes a
+    paragraph in bold; consecutive other lines stay one paragraph, one line each.
+    """
+    blocks: list[Markup] = []
+    for chunk in _PARAGRAPH_BREAK.split(text):
+        lines = [_line_kind(line) for line in chunk.splitlines() if line.strip()]
+        for kind, group in groupby(lines, key=itemgetter(0)):
+            parts = [_inline(content, source_count) for _, content in group]
+            if kind in ("ul", "ol"):
+                items = Markup("").join(Markup("<li>{}</li>").format(part) for part in parts)
+                blocks.append(Markup(f"<{kind}>{{}}</{kind}>").format(items))
+            elif kind == "h":
+                blocks.extend(Markup("<p><strong>{}</strong></p>").format(part) for part in parts)
+            else:
+                blocks.append(Markup("<p>{}</p>").format(Markup("<br>").join(parts)))
+    return blocks
 
 
 @dataclass(frozen=True, slots=True)
@@ -60,7 +98,7 @@ class SourceView:
 @dataclass(frozen=True, slots=True)
 class AnswerView:
     answer: Answer
-    paragraphs: list[Markup]
+    blocks: list[Markup]  # HTML of the answer text (see `answer_blocks`)
     cited: list[SourceView]
     others: list[SourceView]  # retrieved but not cited
 
@@ -82,7 +120,7 @@ def answer_view(answer: Answer) -> AnswerView:
     ]
     return AnswerView(
         answer=answer,
-        paragraphs=[] if answer.abstained else paragraphs(answer.text, len(answer.sources)),
+        blocks=[] if answer.abstained else answer_blocks(answer.text, len(answer.sources)),
         cited=[source for source in sources if source.number - 1 in passages],
         others=[source for source in sources if source.number - 1 not in passages],
     )

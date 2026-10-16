@@ -17,8 +17,8 @@
   </div>
   {% else %}
   <div class="risposta-testo">
-    {% for paragraph in result.paragraphs %}
-    <p>{{ paragraph }}</p>
+    {% for block in result.blocks %}
+    {{ block }}
     {% endfor %}
   </div>
   {% endif %}
