@@ -76,6 +76,9 @@ class Settings(BaseSettings):
     # Comma-separated IPs/CIDRs of trusted reverse proxies; empty = ignore X-Forwarded-For.
     # "*" trusts any peer but then only the rightmost X-Forwarded-For hop is used.
     forwarded_allow_ips: str = ""
+    # Header in which the outermost trusted proxy names the client (e.g. "CF-Connecting-IP"
+    # behind Cloudflare); read only when every X-Forwarded-For hop is a trusted proxy.
+    real_ip_header: str = ""
 
     log_level: str = "INFO"
 

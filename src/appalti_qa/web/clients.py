@@ -5,6 +5,10 @@ The client address is the TCP peer, unless the peer is a trusted reverse proxy: 
 of proxies is unknown, so only the rightmost hop, the one appended by the immediate proxy, is
 used: every hop to its left may have been written by the client.
 
+When every hop is a trusted proxy, the outermost one may name the client in a header of its own
+(`real_ip_header`, e.g. Cloudflare's CF-Connecting-IP). It is read only in that case, so a client
+that reaches the app by another route cannot choose its address with it.
+
 Addresses are never stored: they are reduced to a salted SHA-256 digest. IPv6 addresses are first
 reduced to their /64 network, since a single subscriber usually controls a whole /64.
 """
@@ -52,7 +56,7 @@ class TrustedProxies:
         return any(address in network for network in self._networks)
 
 
-def client_address(request: Request, trusted: TrustedProxies) -> str:
+def client_address(request: Request, trusted: TrustedProxies, real_ip_header: str = "") -> str:
     """The address of the client that sent the request, as far as trusted proxies tell."""
     peer = request.client.host if request.client else ""
     if peer not in trusted:
@@ -64,7 +68,19 @@ def client_address(request: Request, trusted: TrustedProxies) -> str:
     for hop in reversed(hops):
         if hop not in trusted:
             return hop
+    if real_ip_header:  # every hop is a trusted proxy: the outermost may name the client
+        claimed = request.headers.get(real_ip_header, "").strip()
+        if _is_address(claimed):
+            return claimed
     return hops[0] if hops else peer
+
+
+def _is_address(value: str) -> bool:
+    try:
+        ip_address(value)
+    except ValueError:
+        return False
+    return True
 
 
 def client_bucket(address: str) -> str:

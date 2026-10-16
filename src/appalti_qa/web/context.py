@@ -28,7 +28,9 @@ class WebContext:
     search_limiter: RateLimiter  # GET /api/v1/search, separate from the answering budget
 
     def client_hash(self, request: Request) -> str:
-        return self.hasher(client_address(request, self.trusted_proxies))
+        return self.hasher(
+            client_address(request, self.trusted_proxies, self.settings.real_ip_header)
+        )
 
 
 def get_context(request: Request) -> WebContext:

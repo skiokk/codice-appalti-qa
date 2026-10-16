@@ -42,8 +42,10 @@ Italia, plus a JSON API. `create_app()` works with no arguments (the Docker imag
 - Clients are identified by a salted SHA-256 of the address (`CLIENT_HASH_SALT`); IPv6 addresses
   are reduced to their /64 network first, so one host cannot rotate addresses to evade the limits.
   `X-Forwarded-For` is read only from peers listed in `FORWARDED_ALLOW_IPS`; with `*` only the
-  rightmost hop (the one the immediate proxy appended) is used, unlike uvicorn's leftmost. Raw
-  IPs are never stored.
+  rightmost hop (the one the immediate proxy appended) is used, unlike uvicorn's leftmost. When
+  every hop is a trusted proxy, `REAL_IP_HEADER` (behind Cloudflare, `CF-Connecting-IP` with
+  Cloudflare's ranges in `FORWARDED_ALLOW_IPS`) names the client; a request that reaches the app
+  by another route has an untrusted hop, so the header is ignored. Raw IPs are never stored.
 - Every answer, and every failed attempt, is written to `qa_log` in a background task; a logging
   failure never breaks the response.
 - Validation errors return 422 with Italian messages; `LLMError` or a database error return 503

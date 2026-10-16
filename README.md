@@ -362,6 +362,7 @@ Environment variables, also read from `.env` (see [.env.example](.env.example)):
 | `RATE_LIMIT_SEARCH_PER_IP_PER_HOUR` | `120` | per-client limit of `GET /api/v1/search` (0 disables); `k` is capped at 20 |
 | `CLIENT_HASH_SALT` | random per process | salt for hashing client addresses in the usage log |
 | `FORWARDED_ALLOW_IPS` | empty | reverse proxies trusted for `X-Forwarded-For` (`*`: only the rightmost hop is used) |
+| `REAL_IP_HEADER` | empty | header in which the outermost trusted proxy names the client, read only when every hop is trusted (behind Cloudflare: `CF-Connecting-IP`) |
 
 ## Limitations
 
