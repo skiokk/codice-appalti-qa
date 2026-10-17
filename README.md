@@ -18,6 +18,9 @@ This project answers only from the official consolidated text, at the requested 
 cited passage shown next to the answer and a link to Normattiva. It is built to abstain when the
 sources do not answer the question. It also publishes how often it gets things right.
 
+**Live demo: [appalti.cadimatteo.it](https://appalti.cadimatteo.it)** (Italian interface; answers
+are limited to 20 per hour per visitor and 50 per day in total, since each one calls a paid API).
+
 <p align="center">
   <img src="docs/images/answer.png" width="640" alt="An answer to &quot;Fino a che importo posso affidare direttamente un servizio?&quot; at 17 October 2026: art. 50, comma 1, lett. b) allows direct award of services under 140,000 euro, with numbered citations linked to the cited commi, each with its validity and the act that amended it">
 </p>
@@ -26,7 +29,7 @@ sources do not answer the question. It also publishes how often it gets things r
   <img src="docs/images/versions.png" width="640" alt="Page of art. 108, comma 4: the text in force at the chosen date and a table of its four versions, from the original text of 1 April 2023 to the version introduced by L. 30 ottobre 2025, n. 164">
 </p>
 
-*Screenshots of a local run (17 October 2026). Above: an answer with its cited commi, each with
+*Screenshots (17 October 2026). Above: an answer with its cited commi, each with
 its validity and amending act. Below: a comma and its versions over time.*
 
 ## Features
