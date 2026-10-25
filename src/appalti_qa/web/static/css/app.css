@@ -282,3 +282,8 @@ details[open] > summary {
   color: #fff;
   font-size: 0.875rem;
 }
+
+.it-footer-small-prints a {
+  color: #fff;
+  text-decoration: underline;
+}
