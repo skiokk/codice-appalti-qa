@@ -7,6 +7,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
+# curl: used by the Coolify health check on /healthz
+RUN apt-get update && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
+
 # CPU-only torch first, so sentence-transformers does not pull the CUDA build.
 RUN pip install torch --index-url https://download.pytorch.org/whl/cpu
 
