@@ -96,8 +96,11 @@ async def _security_headers(
     response = await call_next(request)
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
     response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
-    if not request.url.path.startswith(DOCS_PATH):  # Swagger UI needs an inline script
+    path = request.url.path
+    if not path.startswith(DOCS_PATH):  # Swagger UI needs an inline script
         response.headers.setdefault("Content-Security-Policy", CONTENT_SECURITY_POLICY)
+        if path.startswith("/api/"):  # JSON for programs, not pages for search results
+            response.headers.setdefault("X-Robots-Tag", "noindex")
     return response
 
 

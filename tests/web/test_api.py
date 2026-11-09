@@ -126,6 +126,12 @@ def test_unknown_api_path_is_json_404(client: TestClient) -> None:
     assert response.json() == {"detail": "La pagina richiesta non esiste o è stata spostata."}
 
 
+def test_api_json_is_not_indexed_but_docs_page_is(client: TestClient) -> None:
+    assert client.get("/api/openapi.json").headers["X-Robots-Tag"] == "noindex"
+    assert "X-Robots-Tag" not in client.get("/api/docs").headers
+    assert "X-Robots-Tag" not in client.get("/").headers
+
+
 def test_openapi_lists_endpoints(client: TestClient) -> None:
     paths = client.get("/api/openapi.json").json()["paths"]
     assert {"/api/v1/answer", "/api/ask", "/api/v1/search", "/healthz"} <= paths.keys()
